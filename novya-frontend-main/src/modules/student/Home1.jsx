@@ -2039,13 +2039,16 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useAnimation } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getStudentPerformance } from '../../utils/quizTracking';
+import { getCoinBalance } from '../../utils/coinTracking';
+import { API_CONFIG, djangoAPI } from '../../config/api';
+import { FaStar, FaRegStar } from 'react-icons/fa';
 import './Home1.css';
 
 const Home1 = () => {
@@ -2159,8 +2162,19 @@ const Home1 = () => {
   const [isHovered, setIsHovered] = useState(null);
   const [quizData, setQuizData] = useState(null);
   const [mockTestData, setMockTestData] = useState(null);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackError, setFeedbackError] = useState('');
+  const [hasReceivedReward, setHasReceivedReward] = useState(false);
+  const [rewardDate, setRewardDate] = useState(null);
+  const [latestFeedback, setLatestFeedback] = useState(null);
   const controls = useAnimation();
   const [ref, inView] = useInView();
+
+  const feedbackLabels = useMemo(() => t('feedback.labels', { returnObjects: true }) || [], [t]);
 
   const subjectMap = {
     [t('dashboard.categories.mathematics')]: 'Maths',
@@ -2170,6 +2184,33 @@ const Home1 = () => {
     [t('dashboard.categories.technology')]: 'Computer',
   };
 
+  const fetchFeedbackStatus = useCallback(async () => {
+    const token = localStorage.getItem('userToken');
+    const role = localStorage.getItem('userRole');
+
+    if (!token || role !== 'student') {
+      return;
+    }
+
+    try {
+      const data = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.FEEDBACK_STATUS);
+      setHasReceivedReward(Boolean(data?.has_received_reward));
+      setRewardDate(data?.reward_date || null);
+
+      if (data?.latest_feedback) {
+        setLatestFeedback(data.latest_feedback);
+        setFeedbackRating(data.latest_feedback.rating || 0);
+        setFeedbackComment(data.latest_feedback.comment || '');
+      } else {
+        setLatestFeedback(null);
+        setFeedbackRating(0);
+        setFeedbackComment('');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching feedback status:', error);
+    }
+  }, []);
+
   useEffect(() => {
     setAllCourses(coursesByClass[activeClass]);
     setCurrentTopics(topicsByClass[activeClass]);
@@ -2177,6 +2218,54 @@ const Home1 = () => {
     setCurrentCourse(coursesByClass[activeClass][0].title);
     setCurrentProgress(coursesByClass[activeClass][0].progress);
   }, [activeClass, t]);
+
+  useEffect(() => {
+    fetchFeedbackStatus();
+  }, [fetchFeedbackStatus]);
+
+  const handleFeedbackSubmit = async (event) => {
+    event.preventDefault();
+
+    if (feedbackSubmitting) {
+      return;
+    }
+
+    if (!feedbackRating) {
+      setFeedbackError('Please choose a rating to share your feedback.');
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+    setFeedbackError('');
+    setFeedbackMessage('');
+
+    try {
+      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.FEEDBACK_SUBMIT, {
+        rating: feedbackRating,
+        comment: feedbackComment.trim(),
+      });
+
+      await fetchFeedbackStatus();
+      if (response?.coins_awarded > 0) {
+        try {
+          await getCoinBalance();
+        } catch (balanceError) {
+          console.error('⚠️ Failed to refresh coin balance after feedback:', balanceError);
+        }
+      }
+
+      if (response?.coins_awarded > 0) {
+        setFeedbackMessage(`${t('feedback.submitted')} (+${response.coins_awarded} coins)`);
+      } else {
+        setFeedbackMessage(t('feedback.submitted'));
+      }
+    } catch (error) {
+      console.error('❌ Error submitting student feedback:', error);
+      setFeedbackError('Unable to submit feedback right now. Please try again later.');
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
 
   // Fetch quiz and mock test statistics
   useEffect(() => {
@@ -2373,6 +2462,33 @@ const Home1 = () => {
     rotate: [0, 5, -5, 0],
     transition: { duration: 0.5 }
   };
+
+  const currentStudentDisplayName = useMemo(() => {
+    if (latestFeedback?.student_name) {
+      return latestFeedback.student_name;
+    }
+
+    if (userData?.firstName) {
+      return `${userData.firstName} ${userData.lastName || ''}`.trim();
+    }
+
+    return 'Student';
+  }, [latestFeedback, userData]);
+
+  const currentStudentInitial = useMemo(() => {
+    return currentStudentDisplayName ? currentStudentDisplayName.trim().charAt(0).toUpperCase() || 'S' : 'S';
+  }, [currentStudentDisplayName]);
+
+  const latestFeedbackDate = useMemo(() => {
+    if (latestFeedback?.created_at) {
+      const parsed = new Date(latestFeedback.created_at);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString();
+      }
+      return latestFeedback.created_at;
+    }
+    return rewardDate;
+  }, [latestFeedback, rewardDate]);
 
   return (
     <div className="home-container">
@@ -2750,6 +2866,118 @@ const Home1 = () => {
               </div>
             ))}
           </div>
+        </motion.section>
+
+        <motion.section
+          className="feedback-section mb-5"
+          variants={itemVariants}
+        >
+          <div className="section-header feedback-header">
+            <div>
+              <h2>{t('feedback.title')}</h2>
+              <p className="feedback-subtitle">{t('feedback.subtitle')}</p>
+            </div>
+            <div className={`feedback-reward ${hasReceivedReward ? 'reward-claimed' : ''}`}>
+              <i className="fas fa-coins"></i>
+              <span>
+                {hasReceivedReward ? t('feedback.rewardReceived') : t('feedback.rewardMessage')}
+                {hasReceivedReward && rewardDate ? ` ${t('onDate')} ${rewardDate}` : ''}
+              </span>
+            </div>
+          </div>
+
+          <motion.form
+            className="feedback-form unified"
+            onSubmit={handleFeedbackSubmit}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="feedback-rating">
+              <label htmlFor="feedback-rating">{t('feedback.satisfactionQuestion')}</label>
+              <div className="rating-stars" id="feedback-rating">
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const isActive = (hoverRating || feedbackRating) >= star;
+                  return (
+                    <button
+                      type="button"
+                      key={star}
+                      className={`rating-star ${isActive ? 'active' : ''}`}
+                      onMouseEnter={() => setHoverRating(star)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      onClick={() => setFeedbackRating(star)}
+                      aria-label={feedbackLabels[star - 1] || `${star} star`}
+                    >
+                      {isActive ? <FaStar /> : <FaRegStar />}
+                    </button>
+                  );
+                })}
+              </div>
+              {feedbackLabels[(hoverRating || feedbackRating) - 1] && (
+                <div className="rating-label">
+                  {feedbackLabels[(hoverRating || feedbackRating) - 1]}
+                </div>
+              )}
+            </div>
+
+            <div className="feedback-textarea-group">
+              <label htmlFor="student-feedback" className="visually-hidden">{t('feedback.placeholder')}</label>
+              <textarea
+                id="student-feedback"
+                className="feedback-textarea"
+                placeholder={t('feedback.placeholder')}
+                value={feedbackComment}
+                onChange={(event) => setFeedbackComment(event.target.value)}
+                maxLength={1000}
+                rows={6}
+              />
+            </div>
+
+            <div className="feedback-user-summary">
+              <div className="feedback-user-info">
+                <div className="author-avatar generated-avatar">
+                  <span>{currentStudentInitial}</span>
+                </div>
+                <div className="author-info">
+                  <strong>{currentStudentDisplayName}</strong>
+                  {latestFeedbackDate && <span>{`${t('onDate')} ${latestFeedbackDate}`}</span>}
+                </div>
+              </div>
+              <div className="feedback-user-rating">
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const isFilled = (latestFeedback?.rating || feedbackRating) > index;
+                  return isFilled ? (
+                    <FaStar key={`summary-star-${index}`} />
+                  ) : (
+                    <FaRegStar key={`summary-star-${index}`} className="empty" />
+                  );
+                })}
+              </div>
+              <p className="feedback-user-comment">
+                {latestFeedback?.comment
+                  ? `"${latestFeedback.comment}"`
+                  : t('feedback.rewardMessage')}
+              </p>
+            </div>
+
+            {feedbackError && (
+              <div className="feedback-status error">{feedbackError}</div>
+            )}
+
+            {feedbackMessage && (
+              <div className="feedback-status success">{feedbackMessage}</div>
+            )}
+
+            <motion.button
+              type="submit"
+              className="btn btn-primary feedback-submit-btn"
+              whileHover={{ scale: feedbackSubmitting ? 1 : 1.03 }}
+              whileTap={{ scale: feedbackSubmitting ? 1 : 0.97 }}
+              disabled={feedbackSubmitting}
+            >
+              {feedbackSubmitting ? 'Saving...' : latestFeedback ? t('feedback.changeFeedback') : t('feedback.submit')}
+            </motion.button>
+          </motion.form>
         </motion.section>
       </motion.main>
     </div>
