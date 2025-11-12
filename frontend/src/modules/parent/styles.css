@@ -1,0 +1,563 @@
+ 
+  :root {
+  --primary-bg: #F4F8FB;
+  --accent: #2D5D7B;
+  --text-color: #222831;
+  --highlight: #A62D69;
+}  
+ 
+/* Base styles */
+body {
+  background-color: var(--primary-bg);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text-color);
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.3s ease;
+}
+ 
+/* Global card styling */
+.card {
+  background-color: var(--primary-bg) !important;
+  color: var(--text-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-radius: 12px !important;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+ 
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+}
+ 
+/* Dashboard heading */
+.dashboard-title {
+  color: var(--accent);
+  font-weight: bold;
+  animation: fadeIn 1s ease-in;
+}
+ 
+/* Highlight selected dashboard card */
+.card-selected {
+  border: 2px solid var(--accent) !important;
+  transform: scale(1.02);
+  transition: 0.3s ease-in-out;
+}
+ 
+/* Button styling */
+.btn-accent {
+  background-color: var(--accent);
+  border: none;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+ 
+.btn-accent:hover {
+  background-color: #244a63;
+}
+ 
+/* Badge overrides */
+.badge-success {
+  background-color: var(--accent) !important;
+}
+.badge-warning {
+  background-color: #f0ad4e !important;
+}
+.badge-danger {
+  background-color: var(--highlight) !important;
+}
+ 
+/* Table styling */
+.table th,
+.table td {
+  color: var(--text-color);
+  transition: color 0.3s ease;
+}
+ 
+/* List group items */
+.list-group-item {
+  background-color: #ffffff !important;
+  color: var(--text-color);
+  border-color: #dee2e6;
+  transition: background-color 0.3s ease;
+}
+ 
+/* Profile image hover */
+.profile-img {
+  border-radius: 50%;
+  transition: transform 0.4s ease, box-shadow 0.3s ease;
+}
+ 
+.profile-img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+ 
+/* Profile paragraph spacing */
+.profile-details p {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+ 
+/* Custom pink highlight for selected dashboard card */
+.card-selected-pink {
+  border: 2px solid var(--highlight) !important;
+  transform: scale(1.03);
+  background-color: #fff0f5 !important;
+  transition: all 0.3s ease;
+}
+ 
+/* Compact dashboard cards */
+.dashboard-card {
+  min-height: 100px;
+  padding: 0.75rem 0.5rem !important;
+}
+ 
+.dashboard-card:hover {
+  transform: scale(1.03);
+  background-color: #fdf7fa;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+}
+.dashboard-card .card-title span:first-child {
+  margin-bottom: 4px;
+}
+/* --------------------- */
+/* 🔄 Animations Section */
+/* --------------------- */
+ 
+/* Fade-in for sections */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+ 
+/* Slide-up effect */
+.slide-up {
+  animation: slideUp 0.6s ease-in-out;
+}
+ 
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0px);
+    opacity: 1;
+  }
+}
+ 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+ 
+ 
+ .top-right-avatar {
+  position: absolute;
+  top: 1.5rem;
+  right: 2rem;
+  width: 150px;
+  height: 150px;
+  object-fit: cover;
+  border: 3px solid var(--accent);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+ 
+.top-right-avatar:hover {
+  transform: scale(1.05);
+}
+ 
+.fade-in {
+  animation: fadeIn 0.8s ease-in-out;
+}
+ 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card-selected-pink {
+  border: 3px solid #A62D69 !important;
+  background-color: #fff6fa !important;
+  transition: background-color 0.3s ease;
+}
+ 
+.dashboard-card:hover {
+  border: 2px solid #2D5D7B !important;
+}
+/* Selected card filled with highlight color */
+.card-selected {
+  background-color: #A62D69 !important;
+  color: #ffffff !important;
+  border: 3px solid #A62D69 !important;
+}
+ 
+.card-selected .card-title {
+  color: #ffffff !important;
+}
+ 
+/* Hover effect - thick border in accent color */
+.dashboard-card:hover {
+  border: 2px solid #2D5D7B !important;
+}
+ 
+ 
+/* Add these to your existing App.css */
+ 
+/* Floating animation for profile image */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+ 
+/* Pulsing animation for the badge */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+ 
+/* Hover effects for the info cards */
+.col-md-6 > div:hover {
+  transform: scale(1.02);
+  background-color: rgba(245, 245, 245, 0.9) !important;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+}
+ 
+/* Button hover effect */
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+  filter: brightness(1.05);
+}
+ 
+/* Link hover effects */
+a:hover {
+  color: var(--accent) !important;
+  text-decoration: none !important;
+}
+ 
+ 
+ 
+/* Add these to your existing App.css */
+ 
+/* Pulse animation for percentage */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+ 
+/* Bounce animation for badge */
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+ 
+/* Status color variations */
+:root {
+  --success-light: rgba(40, 167, 69, 0.1);
+  --warning-light: rgba(255, 193, 7, 0.1);
+  --danger-light: rgba(220, 53, 69, 0.1);
+}
+ 
+/* Hover effects for stat cards */
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+ 
+/* Progress bar custom colors */
+.progress-bar-success {
+  background-color: var(--accent);
+}
+ 
+.progress-bar-warning {
+  background-color: var(--warning);
+}
+ 
+.progress-bar-danger {
+  background-color: var(--highlight);
+}
+ 
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .attendance-percentage {
+    font-size: 1.5rem !important;
+  }
+}
+ 
+ 
+/* Add these animations to your App.css */
+ 
+/* Progress ring animation */
+@keyframes rotateProgress {
+  0% { transform: rotate(45deg); }
+  100% { transform: rotate(calc(45deg + (360deg * 0.75))); }
+}
+ 
+/* Pulse animation for alert */
+@keyframes pulseAlert {
+  0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+}
+ 
+
+ 
+/* Subject card hover effect */
+.subject-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.1) !important;
+  background-color: white !important;
+}
+ 
+/* Bar chart animations */
+.recharts-bar-rectangle {
+  transition: all 0.5s ease;
+}
+ 
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .progress-ring {
+    width: 100px !important;
+    height: 100px !important;
+  }
+  .progress-ring-circle {
+    width: 100px !important;
+    height: 100px !important;
+  }
+}
+ 
+ 
+/* Add these to your existing App.css */
+ 
+/* Pulse animation for overdue items */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+ 
+/* Hover effects */
+.ListGroup-item:hover {
+  transform: translateX(5px);
+  box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+  background-color: white !important;
+}
+ 
+/* Button hover effect */
+.btn-sm:hover {
+  background-color: var(--accent) !important;
+  color: white !important;
+  transform: translateY(-1px);
+}
+ 
+/* View All hover effect */
+.btn-link:hover {
+  color: var(--highlight) !important;
+  transform: translateX(3px);
+}
+ 
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .dashboard-title {
+    font-size: 1.1rem !important;
+  }
+}
+ 
+/* Add these to your existing App.css */
+ 
+/* Pulse animation for urgent status */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+ 
+/* Hover effects for stat cards */
+.text-center.rounded:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+ 
+/* Button hover effect */
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(45, 93, 123, 0.3) !important;
+  filter: brightness(1.05);
+}
+ 
+/* Progress bar animation */
+.progress-bar-animated {
+  animation: progress-bar-stripes 1s linear infinite;
+}
+ 
+@keyframes progress-bar-stripes {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+ 
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .d-flex.justify-content-between.mb-4 {
+    flex-direction: column;
+  }
+ 
+  .text-center.rounded {
+    margin-bottom: 10px !important;
+    margin-right: 0 !important;
+  }
+}
+ 
+/* Add these to your existing App.css */
+ 
+/* Row fade-in animation */
+@keyframes fadeInRow {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+ 
+.fade-in-row {
+  animation: fadeInRow 0.5s ease-out forwards;
+}
+ 
+/* Table row hover effect */
+tbody tr:hover {
+  background-color: rgba(45, 93, 123, 0.03) !important;
+  transform: translateX(3px);
+}
+ 
+/* View All hover effect */
+.btn-link:hover {
+  color: var(--highlight) !important;
+  transform: translateX(3px);
+}
+ 
+/* Progress bar animation */
+.progress-bar {
+  transition: width 1s ease-in-out;
+}
+ 
+/* Responsive table adjustments */
+@media (max-width: 768px) {
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+ 
+  .dashboard-title {
+    font-size: 1.1rem !important;
+  }
+}
+ 
+/* Add these to your existing App.css */
+ 
+/* Row fade-in animation */
+@keyframes fadeInRow {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+ 
+.fade-in-row {
+  animation: fadeInRow 0.5s ease-out forwards;
+}
+ 
+/* Table row hover effect */
+tbody tr:hover {
+  background-color: rgba(45, 93, 123, 0.03) !important;
+  transform: translateX(3px);
+  box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+}
+ 
+/* Button hover effects */
+.btn-outline-success:hover {
+  background-color: #28a745 !important;
+  color: white !important;
+  transform: translateY(-2px);
+}
+ 
+.btn-outline-danger:hover {
+  background-color: #dc3545 !important;
+  color: white !important;
+  transform: translateY(-2px);
+}
+ 
+/* View All hover effect */
+.btn-link:hover {
+  color: var(--highlight) !important;
+  transform: translateX(3px);
+}
+ 
+/* Responsive table adjustments */
+@media (max-width: 768px) {
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+ 
+  .dashboard-title {
+    font-size: 1.1rem !important;
+  }
+}
+ 
+/* Add these to your existing App.css */
+ 
+/* Pulse animation for urgent status */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+  70% { boxShadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+  100% { boxShadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+ 
+/* Payment modal animations */
+.modal-content {
+  animation: fadeInUp 0.3s ease-out;
+}
+ 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+ 
+/* Payment method badges */
+.badge.bg-light {
+  transition: all 0.2s ease;
+}
+ 
+.badge.bg-light:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+ 
+ 
+ 

@@ -1,0 +1,193 @@
+.event-registration-container {
+  padding-top: 3rem;
+  padding-bottom: 5rem;
+  min-height: 100vh;
+  background-color: #f8f9fa; /* Light background */
+}
+
+.event-registration-title {
+  color: #2D5D7B; /* Primary color */
+  font-weight: 700;
+  margin-bottom: 2.5rem;
+}
+
+.highlight-text {
+  color: #A62D69; /* Highlight color */
+}
+
+.event-details-card {
+  border-radius: 15px;
+  overflow: hidden; /* Ensures image corners are rounded */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.event-detail-image {
+  height: 100%;
+  object-fit: cover;
+  border-top-left-radius: 15px;
+  border-bottom-left-radius: 15px;
+}
+
+.card-body {
+  padding: 3rem;
+}
+
+.card-title {
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #1a3a4f;
+  display: flex;
+  align-items: center;
+}
+
+.event-type-badge {
+  font-size: 0.9rem;
+  padding: 0.5em 1em;
+  border-radius: 20px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.event-type.workshop { background-color: #009688; } /* Teal */
+.event-type.seminar { background-color: #F9A826; } /* Orange */
+.event-type.competition { background-color: #A62D69; } /* Dark Pink */
+/* Add more types if needed */
+
+.card-text {
+  font-size: 1.1rem;
+  color: #555;
+  line-height: 1.6;
+}
+
+.event-description {
+  color: #333;
+  margin-top: 1.5rem;
+  font-style: italic;
+}
+
+.icon-color {
+  color: #A62D69; /* Icon color */
+  margin-right: 0.5rem;
+}
+
+.form-label {
+  font-weight: 500;
+  color: #2D5D7B;
+}
+
+.form-control {
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ced4da;
+  transition: all 0.3s ease;
+}
+
+.form-control:focus {
+  border-color: #A62D69;
+  box-shadow: 0 0 0 0.25rem rgba(166, 45, 105, 0.25);
+}
+
+.register-btn {
+  background-color: #2D5D7B;
+  border-color: #2D5D7B;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.register-btn:hover {
+  background-color: #1a3a4f;
+  border-color: #1a3a4f;
+  transform: translateY(-2px);
+}
+
+.register-btn:disabled {
+  background-color: #ccc;
+  border-color: #ccc;
+  cursor: not-allowed;
+}
+
+.back-button {
+  color: #2D5D7B;
+  border-color: #2D5D7B;
+  font-weight: 500;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+.back-button:hover {
+  background-color: #2D5D7B;
+  color: #fff;
+}
+
+.alert-success {
+  background-color: #e6ffed;
+  color: #155724;
+  border-color: #c3e6cb;
+  border-radius: 10px;
+  padding: 2rem;
+}
+
+.alert-success .alert-heading {
+  color: #155724;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.alert-success .btn-primary {
+  background-color: #009688;
+  border-color: #009688;
+}
+
+.alert-success .btn-primary:hover {
+  background-color: #00796b;
+  border-color: #00796b;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991.98px) {
+  .event-details-card .row {
+    flex-direction: column;
+  }
+  .event-detail-image {
+    border-radius: 15px 15px 0 0 !important;
+    height: 250px; /* Adjust height for smaller screens */
+  }
+  .card-body {
+    padding: 2rem;
+  }
+  .card-title {
+    font-size: 1.8rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .event-type-badge {
+    margin-top: 0.5rem;
+    margin-left: 0 !important;
+  }
+  .event-registration-title {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .event-registration-title {
+    font-size: 2rem;
+  }
+  .card-body {
+    padding: 1.5rem;
+  }
+  .card-title {
+    font-size: 1.5rem;
+  }
+  .card-text {
+    font-size: 1rem;
+  }
+  .register-btn {
+    font-size: 1rem;
+    padding: 0.6rem 1rem;
+  }
+}

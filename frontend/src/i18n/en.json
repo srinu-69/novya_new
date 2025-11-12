@@ -1,0 +1,1404 @@
+
+{
+  "hero": {
+    "title": {
+      "shape": "Shape",
+      "your": "Your",
+      "future": "Future"
+    },
+    "subtitle": "Track your academic performance, quiz results, and mock test outcomes to maximize your future opportunities.",
+    "cta": {
+      "viewDashboard": "View Dashboard"
+    }
+  },
+  "stats": {
+    "studentsTracked": "Students Tracked",
+    "improvementRate": "Improvement Rate",
+    "metricsTracked": "Metrics Tracked",
+    "hoursAnalyzed": "Hours Analyzed"
+  },
+  "performance": {
+    "title": "Your Performance Metrics",
+    "subtitle": "Comprehensive analysis of your academic, quiz, and mock test performance",
+    "academic": "Academic Performance",
+    "quiz": "Quiz Performance",
+    "mock": "Mock Test Performance"
+  },
+  "metrics": {
+    "gpa": "GPA",
+    "testScores": "Test Scores",
+    "courseRigor": "Course Rigor",
+    "totalQuizzes": "Total Quizzes",
+    "averageScore": "Average Score",
+    "totalQuestions": "Total Questions",
+    "totalTests": "Total Tests"
+  },
+  "viewDetails": "View Details",
+  "scale": {
+    "title": "Performance Scale",
+    "subtitle": "Understand how your metrics compare to benchmarks",
+    "excellent": "Excellent",
+    "excellentPercent": "Top 10%",
+    "excellentDesc": "Performance significantly exceeds expectations. Demonstrates mastery of skills and concepts.",
+    "good": "Good",
+    "goodPercent": "Top 25%",
+    "goodDesc": "Performance exceeds expectations. Shows strong understanding with minor areas for improvement.",
+    "average": "Average",
+    "averagePercent": "Middle 50%",
+    "averageDesc": "Meets expectations. Demonstrates adequate understanding with room for growth.",
+    "developing": "Developing",
+    "developingPercent": "Lower 25%",
+    "developingDesc": "Approaching expectations. Needs targeted support in key areas.",
+    "needsWork": "Needs Work",
+    "needsWorkPercent": "Bottom 10%",
+    "needsWorkDesc": "Below expectations. Requires significant intervention and support."
+  },
+  "cta": {
+    "title": "Ready to Analyze Your Performance?",
+    "subtitle": "Get detailed insights into your strengths and areas for improvement with our comprehensive performance analysis.",
+    "viewReport": "View Full Report"
+  },
+  "academic": {
+    "description": "Your academic performance shows strong results across all subjects with particular strengths in STEM fields.",
+    "strengths": [
+      "Consistent high achiever in Mathematics and Science",
+      "Excellent problem-solving skills",
+      "Strong analytical abilities"
+    ],
+    "recommendations": [
+      "Consider advanced placement courses in Math and Science",
+      "Participate in academic competitions to challenge yourself",
+      "Explore research opportunities in your areas of strength"
+    ],
+    "chart": {
+      "labels": {
+        "math": "Math",
+        "science": "Science",
+        "english": "English",
+        "history": "History",
+        "foreignLang": "Foreign Lang"
+      },
+      "datasets": {
+        "yourScores": "Your Scores",
+        "classAverage": "Class Average"
+      }
+    }
+  },
+  "quiz": {
+    "description": "Your performance across all quizzes taken on the platform.",
+    "strengths": [
+      "Consistent practice",
+      "Completed quizzes in {{count}} levels",
+      "Building knowledge base"
+    ],
+    "recommendations": [
+      "Attempt more quizzes in higher levels",
+      "Review incorrect answers",
+      "Set daily quiz goals"
+    ],
+    "chart": {
+      "label": "Quizzes per Level"
+    }
+  },
+  "mock": {
+    "description": "Your performance in mock tests simulating real exam conditions.",
+    "strengths": [
+      "Exam readiness",
+      "Time management",
+      "Pressure handling"
+    ],
+    "recommendations": [
+      "Take regular mock tests",
+      "Analyze time spent per question",
+      "Focus on weak subjects"
+    ],
+    "chart": {
+      "label": "Average Score"
+    }
+  },
+  "profile": {
+    "grade": "8th Grade",
+    "interests": "Interests",
+    "achievements": "Recent Achievements",
+    "interestsList": [
+      "Robotics",
+      "Creative Writing",
+      "Basketball",
+      "Debate"
+    ],
+    "strengthsList": [
+      "Mathematical Reasoning",
+      "Scientific Inquiry",
+      "Logical Analysis"
+    ],
+    "hobbies": [
+      "Coding",
+      "Music",
+      "Art",
+      "Public Speaking"
+    ],
+    "recentAchievements": [
+      "1st Place in Regional Math Olympiad",
+      "Published short story in school magazine",
+      "Elected as class representative",
+      "Perfect attendance award"
+    ]
+  },
+  "modal": {
+    "keyMetrics": "Key Metrics",
+    "strengths": "Strengths",
+    "recommendations": "Recommendations"
+  },
+
+
+
+
+
+  "missionvision": {
+    "title": "Features",
+    "section1": {
+      "title": "Our Mission & Vision",
+      "paragraph1": "To make personalized, world-class education accessible to everyone through AI, helping each learner reach their full potential.",
+      "paragraph2": "At Novya, we recognize that everyone learns differently and turn each unique style into a strength. Our AI-driven platform makes learning engaging, interactive, and effective, shaping curious, confident, and capable learners ready to achieve their dreams.",
+      "imageAlt": "Novya education platform"
+    },
+    "section2": {
+      "h1": "I UNDERLY EVERY",
+      "h2": "Student's Unique Pace & Style",
+      "paragraph": "At Novya, learning is personal and it is built for you, but we know every student learns differently, and we turn your unique way of learning into your greatest strength. Novya's core strength lies in its adaptive learning engine, meticulously designed to understand and respond to your individual needs.",
+      "personalizedPace": "Personalized Pace :",
+      "personalizedPaceDesc": "Our AI identifies your optimal learning speed, ensuring you're never overwhelmed or bored.",
+      "adaptsToStyle": "Novya adapts to your preferred learning style, making complex topics intuitive and engaging.",
+      "stat1": "Of students report feeling more engaged",
+      "stat2": "Improvement in test scores observed",
+      "imageAlt": "Student learning with Novya"
+    },
+    "section3": {
+      "title": "Dive Into Engaging & Adaptive Learning Modules With NOVYA",
+      "paragraph": "Learning with Novya isn't just about absorbing information, it's about active engagement and deep understanding. Our AI-powered modules are designed to keep you challenged and motivated.",
+      "list1": {
+        "title": "Personalized Content :",
+        "desc": "As you progress, Novya's AI curates your next steps, suggesting relevant topics, advanced challenges, or remedial exercises to ensure a solid foundation."
+      },
+      "list2": {
+        "title": "Interactive Simulations :",
+        "desc": "Experience dynamic lessons filled with interactive quizzes, simulations, and problem-solving scenarios that reinforce learning in a practical way."
+      },
+      "list3": {
+        "title": "Real-time Feedback :",
+        "desc": "Receive instant, actionable feedback that explains why an answer is right or wrong, guiding you toward mastery without frustration."
+      },
+      "imageAlt": "Novya learning modules"
+    },
+    "section4": {
+      "title": "Unlock Your Potential & With NOVYA Resources",
+      "paragraph": "Novya provides you with more than just courses, we give you the tools and insights to take control of your learning journey and truly unlock your potential.",
+      "list1": {
+        "title": "Personalized Progress Reports :",
+        "desc": "Gain clear, insightful overviews of your performance, highlighting your strengths, areas for improvement, and overall progress."
+      },
+      "list2": {
+        "title": "Performance Analytics :",
+        "desc": "Understand your learning habits and identify patterns that contribute to your success, empowering you to optimize your study strategies."
+      },
+      "list3": {
+        "title": "Enhanced Learning Efficiency :",
+        "desc": "Earn rewards and track progress."
+      },
+      "list4": {
+        "title": "Real-time Feedback :",
+        "desc": "With data-driven insights, Novya helps you focus your efforts where they matter most, leading to more efficient learning and faster skill acquisition."
+      },
+      "imageAlt": "Novya resources"
+    },
+    "section5": {
+      "title": "Data-Driven Insights",
+      "paragraph": "With Novya, every step of your journey is crafted to spark curiosity, boost confidence, and help you to achieve your true potential.",
+      "imageAlt": "Novya data insights"
+    }
+  },
+
+
+
+
+
+    "aidemo": {
+    "header": "🤖 AI Chat Assistant",
+    "placeholder": "Ask or upload image...",
+    "uploadIcon": "📷",
+    "sendButton": "Send",
+    "imageReady": "Image ready to send",
+    "uploadedImageAlt": "uploaded image",
+    "videoLink": "🎥 Video",
+    "quizLink": "🧠 Quiz",
+    "ai": {
+      "imageResponse": "AI scanned the image and says: \"This looks like an electric circuit diagram.\"",
+      "textResponse": "Here's an explanation for \"{{question}}\""
+    },
+    "previewAlt": "preview"
+  },
+
+
+
+
+
+  "appdownload": {
+    "title": "Home",
+    "titleText": "Transform Your Learning",
+    "subtitle": "Our cutting-edge app is coming soon to revolutionize your education!",
+    "googlePlay": "Google Play",
+    "appStore": "App Store",
+    "comingSoon": "Coming Soon"
+  },
+
+
+
+
+
+  "contact": {
+    "title": "Contact Us",
+    "header": "📬 Let's Connect",
+    "subtitle": "Tell us what you're looking for — we're here to help.",
+    "labels": {
+      "name": "👤 Full Name",
+      "email": "📧 Email Address",
+      "reason": "📌 What do you need help with?",
+      "message": "💬 Message"
+    },
+    "placeholders": {
+      "name": "Your name",
+      "email": "you@example.com",
+      "selectReason": "Select one...",
+      "message": "Tell us more..."
+    },
+    "reasons": {
+      "studentSupport": "I'm a Student needing support",
+      "parentInfo": "I'm a Parent with questions",
+      "partnership": "Interested in partnership",
+      "career": "Looking to work with you",
+      "other": "Other"
+    },
+    "submitButton": "🚀 Submit Request",
+    "whatsappButton": "💬 Chat on WhatsApp",
+    "imageAlt": "AI Illustration",
+    "errors": {
+      "nameRequired": "Full Name is required",
+      "nameMinLength": "Name must be at least 2 characters",
+      "emailRequired": "Email is required",
+      "invalidEmail": "Enter a valid email address (e.g., user@example.com)",
+      "reasonRequired": "Please select a reason",
+      "messageRequired": "Message cannot be empty",
+      "messageMinLength": "Message should be at least 10 characters"
+    },
+    "submitError": "⚠️ Please fix the highlighted errors!",
+    "submitSuccess": "🎉 THANK YOU for contacting us, we will contact you soon!"
+  },
+
+
+
+
+
+    "coursedetail": {
+    "title": "Course Details",
+    "imageAlt": "Course Image",
+    "defaultTitle": "Sample Course",
+    "by": "By",
+    "students": "students",
+    "description": "Learn <strong>{{title}}</strong> from scratch with hands-on projects.",
+    "features": {
+      "lifetimeAccess": "Lifetime access",
+      "certificate": "Certificate of Completion",
+      "mentorSupport": "Full-time mentor support"
+    },
+    "enrollNow": "Enroll Now"
+  },
+
+
+
+
+
+    "courses": {
+    "title": "Courses",
+    "exploreTitle": "Explore Our Courses",
+    "professionalSubtitle": "Professional Courses: Software Development & Hotel Management",
+    "tabs": {
+      "all": "All Courses",
+      "academic": "Academic",
+      "professional": "Professional"
+    },
+    "exploreButton": "Explore Courses",
+    "comingSoonToast": "🚀 Coming Soon! This course will be available shortly.",
+    "schoolEducation": {
+      "title": "📚 School Education 7-12 class",
+      "subjects": {
+        "maths": "Maths",
+        "science": "Science",
+        "english": "English",
+        "social": "Social",
+        "computer": "Computer"
+      }
+    },
+    "engineering": {
+      "title": "⚙️ Engineering",
+      "subjects": {
+        "computerScience": "Computer Science",
+        "aiMl": "Artificial Intelligence & Machine Learning (AI & ML)",
+        "cybersecurity": "Cybersecurity & Ethical Hacking",
+        "cloudComputing": "Cloud Computing"
+      }
+    },
+    "softwareDevelopment": {
+      "title": "💻 Software Development",
+      "subjects": {
+        "python": "Python Programming",
+        "webDev": "Web Development",
+        "mobileApp": "Mobile App Development",
+        "dataScience": "Data Science",
+        "cloudComputing": "Cloud Computing"
+      }
+    },
+    "hotelManagement": {
+      "title": "🏨 Hotel Management",
+      "subjects": {
+        "frontOffice": "Front Office Operations",
+        "housekeeping": "Housekeeping Management",
+        "foodProduction": "Food Production",
+        "foodService": "Food & Beverage Service",
+        "hotelAccounting": "Hotel Accounting"
+      }
+    },
+    "certifications": {
+      "title": "🎓 Certifications",
+      "subjects": {
+        "aws": "AWS Certification",
+        "microsoft": "Microsoft Certifications",
+        "cisco": "Cisco Certifications",
+        "digitalMarketing": "Digital Marketing",
+        "projectManagement": "Project Management"
+      }
+    }
+  },
+
+
+
+
+
+    "faqs": {
+    "title": "FAQs",
+    "header": "❓ Frequently Asked Questions",
+    "subtitle": "Find answers or ask your own question about Novya AI.",
+    "askQuestionHeader": "📝 Ask Your Own Question",
+    "placeholder": "e.g. How does the AI doubt solving work?",
+    "submitButton": "Submit",
+    "emptyQuestionError": "Please type your question first!",
+    "submitSuccess": "Your question was submitted!",
+    "userQuestionAnswer": "Thanks! Our team will add a detailed answer shortly.",
+    "questions": [
+      {
+        "question": "What is Novya AI and how does it work?",
+        "answer": "Novya AI combines video lessons with an AI tutor that helps students clear doubts instantly and track progress effectively."
+      },
+      {
+        "question": "Is this platform suitable for CBSE students?",
+        "answer": "Yes, we support NCERT and state syllabus from Grade 7 to 10 with subject-wise smart learning tools."
+      },
+      {
+        "question": "Can I use Novya AI on my phone?",
+        "answer": "Yes! It is fully responsive and works on mobiles, tablets, and desktops with internet access."
+      },
+      {
+        "question": "How do parents track their child's progress?",
+        "answer": "Parents get their own dashboard to track usage time, quizzes, topics completed, and improvement areas."
+      },
+      {
+        "question": "Do I get a free trial?",
+        "answer": "Yes, we offer a 7-day free trial with no payment required upfront."
+      }
+    ]
+  },
+
+
+
+
+
+    "chatbot": {
+    "title": "Chat bot"
+  },
+
+
+
+
+
+    "footer": {
+    "title": "Home",
+    "branding": {
+      "description": "Empowering learners with personalized AI education, anytime, anywhere. Join our community to transform your learning experience."
+    },
+    "quickLinks": {
+      "title": "Quick Links",
+      "home": "Home",
+      "courses": "Courses",
+      "freeDemo": "Free Demo",
+      "pricing": "Pricing",
+      "faqs": "FAQs",
+      "contact": "Contact"
+    },
+    "contact": {
+      "title": "Contact Us",
+      "address": "A-Square Business Center Waltair Uplands, Visakhapatnam - 530003",
+      "email": "info@novya.in",
+      "phone": "+91 8886352227"
+    },
+    "copyright": "NOVYA. All rights reserved.",
+    "scrollToTopAria": "Scroll to top"
+  },
+
+
+
+
+
+    "freedemo": {
+    "title": "Free demo",
+    "hero": {
+      "title1": "Book your",
+      "highlight": "Free Demo",
+      "title2": "session",
+      "subtitle": "Get a free academic counselling session with our expert educators",
+      "button": "Book a free demo"
+    },
+    "features": {
+      "1": {
+        "iconAlt": "Guidance Icon",
+        "title": "Personalized Guidance",
+        "description": "Get tailored advice based on your academic goals and learning style."
+      },
+      "2": {
+        "title": "Course Selection",
+        "description": "Understand which courses best fit your career aspirations."
+      },
+      "3": {
+        "title": "Learning Strategy",
+        "description": "Develop an effective study plan with our experienced educators."
+      }
+    },
+    "modal": {
+      "title": "Book Your Free Demo",
+      "closeAria": "Close",
+      "labels": {
+        "name": "Full Name",
+        "email": "Email Address",
+        "phone": "Phone Number",
+        "course": "Course of Interest",
+        "time": "Preferred Time",
+        "message": "Additional Message"
+      },
+      "phonePrefix": "+91",
+      "placeholders": {
+        "phone": "Enter 10-digit number",
+        "course": "Select a course",
+        "time": "Select preferred time",
+        "message": "Tell us about your learning goals or any specific requirements..."
+      },
+      "buttons": {
+        "cancel": "Cancel",
+        "bookDemo": "Book Demo"
+      }
+    },
+    "courses": {
+      "mathematics": "Mathematics",
+      "science": "Science",
+      "english": "English",
+      "computerScience": "Computer Science",
+      "other": "Other"
+    },
+    "times": {
+      "morning": "Morning (9 AM - 12 PM)",
+      "afternoon": "Afternoon (12 PM - 6 PM)",
+      "evening": "Evening (6 PM - 9 PM)"
+    },
+    "success": {
+      "thankYou": "Thank You!",
+      "message": "Your demo session has been successfully booked.",
+      "nextTitle": "What's Next?",
+      "nextDescription": "Detailed information and a demo session link will be sent to your email shortly. Our team will contact you within 24 hours to confirm your preferred time slot.",
+      "continueButton": "Continue Exploring",
+      "autoClose": "This window will close automatically in 5 seconds"
+    },
+    "errors": {
+      "emailRequired": "Email is required",
+      "invalidEmail": "Please enter a valid email address",
+      "nameRequired": "Name is required",
+      "nameMinLength": "Name must be at least 2 characters",
+      "nameInvalid": "Name can only contain letters and spaces",
+      "phoneRequired": "Phone number is required",
+      "phoneLength": "Phone number must be exactly 10 digits",
+      "phoneInvalid": "Phone number must start with 6, 7, 8, or 9",
+      "courseRequired": "Please select a course",
+      "timeRequired": "Please select a preferred time"
+    }
+  },
+
+
+
+
+
+    "navbar": {
+    "title": "Student-Dashboard",
+    "language": "Language",
+    "profile": "My Profile",
+    "settings": "Settings",
+    "logout": "Logout",
+    "login": "Login",
+    "register": "Register",
+    "links": {
+      "home": "Home",
+      "courses": "Courses",
+      "freeDemo": "Free Demo",
+      "pricing": "Pricing",
+      "faqs": "FAQs",
+      "contact": "Contact"
+    }
+  },
+
+
+
+
+
+  "pricing": {
+    "title": "You'll Get Access To (Starts from 7th Grade)",
+    "description": "All included in one affordable yearly membership - Pricing to be announced soon!",
+    "planName": "COMPREHENSIVE YEARLY PLAN",
+    "price": "Coming Soon",
+    "perDay": "Best value pricing",
+    "badge": "PRICING TO BE ANNOUNCED!",
+    "saving": "Best Value",
+    "features": {
+      "allSubjects": "Access to All subjects below",
+      "certifications": "Certifications included",
+      "mentorSupport": "24/7 Mentor Support",
+      "resources": "Downloadable resources",
+      "progressTracking": "Progress tracking",
+      "newMaterials": "New materials added regularly"
+    },
+    "courses": {
+      "titles": ["Mathematics", "Science", "Social Studies", "English", "Physics", "Chemistry", "Biology", "Computer Science"],
+      "instructor": "Curriculum"
+    },
+    "temptingQuotes": [
+      "🚀 92% of students saw grade improvements within 3 months!",
+      "💡 Limited seats available - Don't miss your chance to excel!",
+      "🎓 Join 25,000+ students who transformed their academic journey",
+      "⭐ Our students average 1.5 grade points higher after 6 months",
+      "📈 85% of our students report feeling more confident in exams",
+      "✨ Exclusive content you won't find anywhere else",
+      "🏆 Top-performing students in your school use our platform",
+      "📚 Get access to all subjects in one comprehensive package",
+      "🔥 Special launch pricing coming soon - Stay tuned!",
+      "💫 We're finalizing the best value for your education",
+      "⏳ Pricing details will be announced shortly",
+      "🎯 Affordable excellence is our commitment to you"
+    ],
+    "finalizingText": "We're finalizing the most affordable pricing for students",
+    "payNow": "PAY NOW"
+  },
+
+
+
+
+
+    "testimonials": {
+    "pageTitle": "Testimonials|NOVYA - Your Smart Learning Platform",
+    "header": "Success Stories",
+    "name1": "Tulasi, Class 10",
+    "role1": "CBSE Topper 2023",
+    "quote1": "I improved from 50% to 85% using LMS AI’s personalized feedback system. The AI tutor identified my weak areas instantly!",
+    "name2": "Anand, Class 12",
+    "role2": "JEE Aspirant",
+    "quote2": "As a student from a small town, I never had access to quality coaching. LMS AI became my 24/7 mentor at a fraction of the cost!",
+    "name3": "Dr. Harini",
+    "role3": "Parent & Educator",
+    "quote3": "The progress tracking dashboard helped me monitor my child's improvement week-by-week. Better than any tuition center!",
+    "verified": "Verified User • 2 weeks ago",
+    "averageRating": "Average Rating",
+    "studentsTransformed": "Students Transformed",
+    "acrossIndia": "Across India"
+  },
+ 
+
+
+
+
+    "dashboard": {
+    "title": "Student Dashboard",
+    "hero": {
+      "welcome": "Welcome to Your",
+      "dashboard": "Student Dashboard",
+      "subtitle": "Track your progress, access your courses, and stay updated with upcoming events",
+      "continueLearning": "Continue Learning",
+      "stats": {
+        "activeCourses": "Active Courses",
+        "averageGrade": "Average Grade",
+        "upcomingTasks": "Upcoming Tasks"
+      },
+      "imageAlt": "Student illustration"
+    },
+    "currentCourse": {
+      "title": "Your Current Course",
+      "name": "Mathematics Class 7",
+      "instructor": "Instructor: Mrs. Smith",
+      "started": "Started: Sep 5, 2023",
+      "progress": "% Complete",
+      "lessons": "{{completed}}/{{total}} Lessons",
+      "viewSyllabus": "View Syllabus",
+      "currentTopics": "Current Topics"
+    },
+    "stats": {
+      "title": "Your Learning Stats",
+      "activeCourses": "Active Courses",
+      "hoursThisWeek": "Hours This Week",
+      "averageGrade": "Average Grade",
+      "assignmentsDue": "Assignments Due"
+    },
+    "achievement": {
+      "mathStar": "Math Star Student"
+    },
+    "featuredCourses": {
+      "title": "Your Courses",
+      "progress": "{{progress}}% Complete",
+      "lessons": "{{total}} Lessons",
+      "hours": "{{hours}} Hours",
+      "continue": "Continue"
+    },
+    "tabs": {
+      "all": "All",
+      "mathematics": "Mathematics",
+      "science": "Science",
+      "languages": "Languages",
+      "socialStudies": "Social Studies",
+      "computer": "Computer"
+    },
+    "classes": {
+      "7": "7",
+      "8": "8",
+      "9": "9",
+      "10": "10"
+    },
+    "categories": {
+      "mathematics": "Mathematics",
+      "science": "Science",
+      "languages": "Languages",
+      "socialStudies": "Social Studies",
+      "technology": "Technology"
+    },
+    "courses": {
+      "7": {
+        "math": "Mathematics Grade 7",
+        "physics": "Physics Grade 7",
+        "english": "English Literature Grade 7",
+        "history": "History Grade 7",
+        "chemistry": "Chemistry Grade 7",
+        "computer": "Computer Science Grade 7"
+      },
+      "8": {
+        "math": "Mathematics Grade 8",
+        "physics": "Physics Grade 8",
+        "english": "English Literature Grade 8",
+        "history": "History Grade 8",
+        "chemistry": "Chemistry Grade 8",
+        "computer": "Computer Science Grade 8"
+      },
+      "9": {
+        "math": "Mathematics Grade 9",
+        "physics": "Physics Grade 9",
+        "english": "English Literature Grade 9",
+        "history": "History Grade 9",
+        "chemistry": "Chemistry Grade 9",
+        "computer": "Computer Science Grade 9"
+      },
+      "10": {
+        "math": "Mathematics Grade 10",
+        "physics": "Physics Grade 10",
+        "english": "English Literature Grade 10",
+        "history": "History Grade 10",
+        "chemistry": "Chemistry Grade 10",
+        "computer": "Computer Science Grade 10"
+      }
+    },
+    "topics": {
+      "7": {
+        "1": "Large Numbers",
+        "2": "Arthmetic Expressions",
+        "3": "Peek Point",
+        "4": "Number Expressions",
+        "5": "Lines"
+      },
+      "8": {
+        "1": "A Square And A Cube",
+        "2": "Power Play",
+        "3": "A Story Of Numbers",
+        "4": "Quadrilaterals",
+        "5": "Number Play"
+      },
+      "9": {
+        "1": "Number Systems",
+        "2": "Polynomials",
+        "3": "Coordinate Geometry",
+        "4": "Linear Equations",
+        "5": "Intoduction To Euclids Geometry"
+      },
+      "10": {
+        "1": "Real Numbers",
+        "2": "Polynomials",
+        "3": "Pair Of Linear Equations",
+        "4": "Quadritic Equations",
+        "5": "Arthmetic Progressions"
+      }
+    },
+    "events": {
+      "title": "Upcoming Events",
+      "types": {
+        "workshop": "Workshop",
+        "seminar": "Seminar",
+        "competition": "Competition"
+      },
+      "location": "School Campus",
+      "description": "Join us for an exciting {{type}} on {{date}} at {{time}}",
+      "register": "Register Now"
+    }
+  
+},
+
+
+
+    "failed_load_classes": "Failed to load classes",
+  "failed_load_subjects": "Failed to load subjects",
+  "failed_load_subtopics": "Failed to load subtopics",
+  "invalid_subtopics_format": "Invalid subtopics data format",
+  "preparing_quiz": "Preparing your Quiz...",
+  "try_again": "Try Again",
+  "failed_load_quiz": "Failed to load quiz",
+  "choose_your_grade": "Choose Your Grade",
+  "select_grade_description": "Select your grade level to explore quizzes and study materials built for your journey.",
+  "grade": "Grade",
+  "coming_soon": "Coming Soon",
+  "back": "Back",
+  "quiz_not_available": "Quiz Not Available",
+  "quiz_issue": "There seems to be an issue with the quiz data.",
+  "retry_quiz": "Retry Quiz",
+  "question_not_found": "Question Not Found",
+  "restart_level": "Restart Level",
+  "level": "Level",
+  "completed": "Completed!",
+  "failed": "Failed",
+  "perfect_score": "Perfect Score! 🎉",
+  "great_job": "Great Job! You passed!",
+  "need_min_score": "You need at least 5 marks to pass. You got {{score}} marks.",
+  "your_answer": "Your Answer",
+  "correct_answer": "Correct",
+  "previous": "Previous",
+  "next": "Next",
+  "finish": "Finish",
+  "back_to_subjects": "Back to Subjects",
+  "exit_test": "Exit Test?",
+  "exit_test_warning": "Are you sure you want to exit the test? Your progress may be lost.",
+  "cancel": "Cancel",
+  "exit": "Exit",
+  "score_required_warning": "You need to score at least 5 marks to proceed to the next level.",
+  "passed": "PASSED",
+  "failed_status": "FAILED",
+  "back_to_grades": "Back to Grades",
+  "select_your_subject": "Select Your Subject",
+  "choose_subject_for_grade": "Choose a subject for Grade {{grade}}",
+  "back_to_subjects": "Back to Subjects",
+  "chapters": "Chapters",
+  "select_chapter_to_view_subtopics": "Select a chapter to view subtopics",
+  "start_quiz": "Start Quiz",
+  "quiz_test_page": "Quiz Test Page",
+  "quiz_active": "The quiz is currently active.",
+  "quiz_inactive": "The quiz has ended.",
+  "home": "Home",
+  "class_room": "Class Room",
+  "class_7": "Class 7",
+  "class_8": "Class 8",
+  "class_9": "Class 9",
+  "class_10": "Class 10",
+  "practice": "Practice",
+  "quick_practice": "Quick Practice",
+  "mock_test": "Mock Test",
+  "career": "Career",
+  "mentorship": "Mentorship",
+ 
+  "attendance_progress": "Attendance Progress",
+  "total_days": "Total Days",
+  "logged_in_days": "Logged In Days",
+  "leave_days": "Leave Days",
+  "total_hours": "Total Hours",
+  "daily_log": "Daily Log",
+  "weekly_log": "Weekly Log",
+  "notifications": "Notifications",
+  "leave": "Leave",
+  "short_hours": "Short Hours",
+  "normal": "Normal",
+  "short": "Short",
+  "check_in": "Check-In",
+  "check_out": "Check-Out",
+  "hours": "Hours",
+  "status": "Status",
+  "days_present": "Days Present",
+  "days_leave": "Days Leave",
+  "week": "Week",
+ 
+  "welcome_back": "Welcome back, {{name}}!",
+  "monitor_academic_progress": "Monitor academic progress in real-time",
+  "stay_connected_with_teachers": "Stay connected with teachers and assignments",
+  "celebrate_milestones": "Celebrate every milestone and achievement",
+  "support_child_journey": "Support your child's educational journey",
+  "parent_child_learning_image": "Parent and child learning together",
+  "quick_overview": "Quick Overview",
+  "overall_progress": "Overall Progress",
+  "increase_this_week": "{{value}} this week",
+  "attendance_rate": "Attendance Rate",
+  "increase_this_month": "{{value}} this month",
+  "achievements": "Achievements",
+  "increase_this_week_value": "{{value}} this week",
+  "assignments": "Assignments",
+  "pending_assignments": "{{value}} pending",
+  "what_makes_novya_special": "What Makes NOVYA Special",
+  "ai_powered_learning": "AI-Powered Learning",
+  "ai_learning_description": "Personalized learning paths adapted to your child's unique learning style and pace.",
+  "real_time_analytics": "Real-time Analytics",
+  "analytics_description": "Track progress with detailed insights and performance metrics updated in real-time.",
+  "goal_based_learning": "Goal-based Learning",
+  "goal_based_description": "Set and achieve learning goals with milestone tracking and celebration of achievements.",
+ 
+ 
+  "dashboard": {
+    "title": "Parent Dashboard",
+    "welcome": "Welcome back, {{name}}!",
+    "greeting": {
+      "morning": "Good Morning",
+      "afternoon": "Good Afternoon",
+      "evening": "Good Evening"
+    },
+    "subtitle": "Track your child's learning journey",
+    "overview": "Quick Overview",
+    "features": "What Makes NOVYA Special",
+    "platform": "Your Smart Learning Platform"
+  },
+  "sections": {
+    "home": "Dashboard",
+    "profile": "Child Profile",
+    "attendance": "Attendance",
+    "progress": "Progress",
+    "assignments": "Assignments",
+    "mockTests": "Mock Tests",
+    "studyPlan": "Study Plan",
+    "contact": "Contact us"
+  },
+  "stats": {
+    "overallProgress": "Overall Progress",
+    "attendanceRate": "Attendance Rate",
+    "achievements": "Achievements",
+    "assignments": "Assignments",
+    "thisWeek": "this week",
+    "thisMonth": "this month",
+    "pending": "pending"
+  },
+  "features": {
+    "aiLearning": {
+      "title": "AI-Powered Learning",
+      "description": "Personalized learning paths adapted to your child's unique learning style and pace."
+    },
+    "analytics": {
+      "title": "Real-time Analytics",
+      "description": "Track progress with detailed insights and performance metrics updated in real-time."
+    },
+    "goalLearning": {
+      "title": "Goal-based Learning",
+      "description": "Set and achieve learning goals with milestone tracking and celebration of achievements."
+    }
+  },
+  "typewriter": {
+    "monitorProgress": "Monitor academic progress in real-time",
+    "stayConnected": "Stay connected with teachers and assignments",
+    "celebrateMilestones": "Celebrate every milestone and achievement",
+    "supportJourney": "Support your child's educational journey"
+  },
+  "notifications": {
+    "newAssignment": "New Assignment",
+    "assignmentMessage": "Math homework assigned to your child",
+    "progressReport": "Progress Report",
+    "progressMessage": "Weekly progress report is available",
+    "parentMeeting": "Parent-Teacher Meeting",
+    "meetingMessage": "Reminder: Meeting scheduled for tomorrow",
+    "attendance": "Attendance",
+    "attendanceMessage": "Warning: Missed two classes",
+    "hoursAgo": "{{count}} hour ago",
+    "hoursAgo_plural": "{{count}} hours ago",
+    "daysAgo": "{{count}} day ago",
+    "daysAgo_plural": "{{count}} days ago"
+  },
+  "common": {
+    "logout": "Logout",
+    "notifications": "Notifications",
+    "clear": "Clear",
+    "noNotifications": "No notifications",
+    "settings": "Settings",
+    "language": "Language",
+    "role": "Role",
+    "parent": "Parent",
+    "cancel": "Cancel",
+    "saveChanges": "Save Changes",
+    "editProfile": "Edit Profile",
+    "notProvided": "Not provided"
+  },
+  "profile": {
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "contact": "Contact",
+    "username": "Username",
+    "address": "Address",
+     "Contact Us": "Contact Us",
+      "Parent Name": "Parent Name",
+      "Student Name": "Student Name",
+      "Student ID": "Student ID",
+      "Phone Number": "Phone Number",
+      "Email": "Email",
+      "Message": "Message",
+      "Submit": "Submit",
+      "is required": "is required",
+      "Phone Number must be exactly 10 digits": "Phone Number must be exactly 10 digits",
+      "enter a valid phone number": "Enter a valid phone number",
+      "Phone number must start with 6, 7, 8, or 9": "Phone number must start with 6, 7, 8, or 9",
+      "Please enter a valid email address": "Please enter a valid email address",
+      "Student ID can only contain letters and numbers": "Student ID can only contain letters and numbers",
+      "Name can only contain letters and spaces": "Name can only contain letters and spaces",
+      "Name must be at least 2 characters long": "Name must be at least 2 characters long",
+      "Your name": "Your name",
+      "Your child's name": "Your child's name",
+      "10-digit number": "10-digit number",
+      "Enter valid email": "Enter valid email",
+      "Your message": "Your message",
+      "Thank you for contacting us!": "Thank you for contacting us!",
+      "We will reach out to you soon.": "We will reach out to you soon.",
+ 
+
+  "studentProfile": "Student Profile",
+  "personalInformation": "Personal Information",
+  "gender": "Gender",
+  "dateOfBirth": "Date of Birth",
+  "classTeacher": "Class Teacher",
+  "progress": "Progress",
+  "guardianAndContact": "Guardian & Contact",
+  "guardian": "Guardian",
+  "contact": "Contact",
+  "email": "Email",
+  "address": "Address",
+  "All Subjects": "All Subjects",
+  "subjectsList": {
+    "Mathematics": "Mathematics",
+    "Science": "Science",
+    "English": "English",
+    "Computers": "Computers",
+    "Social Studies": "Social Studies"
+  },
+
+ 
+  "Contact Us": "Contact Us",
+  "Parent Name": "Parent Name",
+  "Enter Parent Name": "Enter Parent Name",
+  "Student Name": "Student Name",
+  "Enter Student Name": "Enter Student Name",
+  "Student ID": "Student ID",
+  "Enter Student ID": "Enter Student ID",
+  "Enter Phone Number": "Enter Phone Number",
+  "Enter Email": "Enter Email",
+  "Enter your message": "Enter your message",
+ 
+  "Phone Number": "Phone Number",
+  "Email": "Email",
+  "Message": "Message",
+  "Enter Parent Name": "Enter Parent Name",
+  "Enter Student Name": "Enter Student Name",
+  "Enter Student ID": "Enter Student ID",
+  "Enter Phone Number": "Enter Phone Number",
+  "Enter Email": "Enter Email",
+  "Enter your message": "Enter your message",
+  "Submit": "Submit",
+  "Thank you for contacting us!": "Thank you for contacting us!",
+  "We will reach out to you soon.": "We will reach out to you soon.",
+  "is required": "is required",
+  "Phone Number must be exactly 10 digits": "Phone Number must be exactly 10 digits",
+  "Enter a valid phone number": "Enter a valid phone number",
+  "Phone number must start with 6, 7, 8, or 9": "Phone number must start with 6, 7, 8, or 9",
+  "Please enter a valid email address": "Please enter a valid email address",
+  "Student ID can only contain letters and numbers": "Student ID can only contain letters and numbers",
+  "Name can only contain letters and spaces": "Name can only contain letters and spaces",
+  "Name must be at least 2 characters long": "Name must be at least 2 characters long",
+  "+91": "+91",
+ 
+  "student_profile": "Student Profile",
+  "student_name": "Arjun Ramesh",
+  "student_class_7": "7th Grade",
+  "male": "Male",
+  "female": "Female",
+  "mathematics": "Mathematics",
+  "science": "Science",
+  "english": "English",
+  "computers": "Computers",
+  "social_studies": "Social Studies",
+  "teacher_name": "Mrs. Lakshmi",
+  "excellent": "Excellent",
+  "guardian_name": "Ramesh Kumar",
+  "student_address": "45, MG Road, Visakhapatanam, Andhra Pradesh",
+  "personal_information": "Personal Information",
+  "gender": "Gender",
+  "dob": "Date of Birth",
+  "class_teacher": "Class Teacher",
+  "progress": "Progress",
+  "guardian_contact": "Guardian & Contact",
+  "guardian": "Guardian",
+  "subjects": "Subjects"
+},
+
+  
+
+"title": "Progress Dashboard",
+
+  "overallScore": "Overall Score",
+
+  "studyHours": "Study Hours",
+
+  "tasksCompleted": "Tasks Completed",
+
+  "weeklyActivity": "Weekly Activity",
+
+  "weeklySubtext": "Your child's study time this week",
+
+  "thisWeekGoal": "This Week's Goal",
+
+  "goalSubtext": "16% more to reach the target!",
+
+  "subjectPerformance": "Subject Performance",
+
+  "subjectSubtext": "Track your child's progress across subjects",
+
+  "alertTitle": "Social Studies Needs Attention",
+
+  "alertMessage": "Your child's performance has dropped by 4%. Consider reviewing recent topics and completing practice exercises.",
+
+  "subjects": {
+
+    "mathematics": "Mathematics",
+
+    "science": "Science",
+
+    "english": "English",
+
+    "socialStudies": "Social Studies",
+
+    "computerScience": "Computer Science"
+
+  },
+
+  "currentScore": "Current Score",
+
+  "complete": "Complete",
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  "dashboard": {
+    "title": "Student Dashboard",
+    "hero": {
+      "title": "Welcome to Your",
+      "highlight": "Student Dashboard",
+      "subtitle": "Track your progress, access your courses, and stay updated with upcoming events",
+      "continueLearning": "Continue Learning",
+      "imageAlt": "Student illustration"
+    },
+    "currentCourse": "Mathematics Class 7",
+    "sections": {
+      "currentCourse": "Your Current Course",
+      "learningStats": "Your Learning Stats",
+      "courses": "Your Courses",
+      "events": "Upcoming Events"
+    },
+    "active": "Active",
+    "instructor": "Instructor: Mrs. Smith",
+    "startDate": "Started: Sep 5, 2023",
+    "complete": "Complete",
+    "lessonsProgress": "13/20 Lessons",
+    "viewSyllabus": "View Syllabus",
+    "currentTopics": "Current Topics",
+    "noTopics": "No topics available",
+    "continue": "Continue",
+    "register": "Register Now",
+    "lessons": "20 Lessons",
+    "hours": "10 Hours",
+    "eventLocation": "School Campus",
+    "eventDescription": "Join us for an exciting {type} on {date} at {time}",
+    "achievement": "Math Star Student",
+    "events": {
+      "scienceWorkshop": "Science Workshop",
+      "careerGuidance": "Career Guidance",
+      "mathOlympiad": "Math Olympiad",
+      "literatureSeminar": "Literature Seminar",
+      "dates": {
+        "oct15": "Oct 15, 2023",
+        "oct18": "Oct 18, 2023",
+        "oct22": "Oct 22, 2023",
+        "oct25": "Oct 25, 2023"
+      }
+    },
+    "eventTypes": {
+      "workshop": "Workshop",
+      "seminar": "Seminar",
+      "competition": "Competition"
+    },
+    "categories": {
+      "mathematics": "Mathematics",
+      "science": "Science",
+      "languages": "Languages",
+      "socialStudies": "Social Studies",
+      "technology": "Technology"
+    },
+    "courses": {
+      "class7": {
+        "math": "Mathematics Grade 7",
+        "physics": "Physics Grade 7",
+        "english": "English Literature Grade 7",
+        "history": "History Grade 7",
+        "chemistry": "Chemistry Grade 7",
+        "computer": "Computer Science Grade 7"
+      },
+      "class8": {
+        "math": "Mathematics Grade 8",
+        "physics": "Physics Grade 8",
+        "english": "English Literature Grade 8",
+        "history": "History Grade 8",
+        "chemistry": "Chemistry Grade 8",
+        "computer": "Computer Science Grade 8"
+      },
+      "class9": {
+        "math": "Mathematics Grade 9",
+        "physics": "Physics Grade 9",
+        "english": "English Literature Grade 9",
+        "history": "History Grade 9",
+        "chemistry": "Chemistry Grade 9",
+        "computer": "Computer Science Grade 9"
+      },
+      "class10": {
+        "math": "Mathematics Grade 10",
+        "physics": "Physics Grade 10",
+        "english": "English Literature Grade 10",
+        "history": "History Grade 10",
+        "chemistry": "Chemistry Grade 10",
+        "computer": "Computer Science Grade 10"
+      }
+    },
+    "stats": {
+      "activeCourses": "Active Courses",
+      "hoursThisWeek": "Hours This Week",
+      "averageGrade": "Average Grade",
+      "assignmentsDue": "Assignments Due"
+    },
+    "topics": {
+      "class7": ["Large Numbers", "Arithmetic Expressions", "Peak Point", "Number Expressions", "Lines"],
+      "class8": ["A Square And A Cube", "Power Play", "A Story Of Numbers", "Quadrilaterals", "Number Play"],
+      "class9": ["Number Systems", "Polynomials", "Coordinate Geometry", "Linear Equations", "Introduction To Euclid's Geometry"],
+      "class10": ["Real Numbers", "Polynomials", "Pair Of Linear Equations", "Quadratic Equations", "Arithmetic Progressions"]
+    },
+    "tabs": {
+      "all": "All",
+      "mathematics": "Mathematics",
+      "science": "Science",
+      "languages": "Languages",
+      "socialstudies": "Social Studies",
+      "computer": "Computer"
+    },
+    "class": "Class 7",
+    "class": "Class 8"
+  },
+
+
+
+
+
+
+
+
+  "studentProfile": "Student Profile",
+  "personalInformation": "Personal Information",
+  "guardianAndContact": "Guardian & Contact",
+  "subjects": "Subjects",
+  "gender": "Gender",
+  "dateOfBirth": "Date of Birth",
+  "classTeacher": "Class Teacher",
+  "progress": "Progress",
+  "guardian": "Guardian",
+  "subjectsList": {
+    "Mathematics": "Mathematics",
+    "Science": "Science",
+    "English": "English",
+    "Computers": "Computers",
+    "Social Studies": "Social Studies"
+  },
+
+
+
+
+
+
+
+
+
+
+
+
+
+  "assignments": "Assignments",
+  "trackHomework": "Track your homework and stay updated",
+  "mathTask": "Math Assignment",
+  "scienceTask": "Science Assignment",
+  "englishTask": "English Assignment",
+  "mathematics": "Mathematics",
+  "science": "Science",
+  "english": "English",
+  "mathDesc": "Complete exercises from chapter 5",
+  "scienceDesc": "Prepare lab report on experiments",
+  "englishDesc": "Read and summarize the novel",
+  "submitted": "Submitted",
+  "pending": "Pending",
+  "overdue": "Overdue",
+  "due": "Due",
+  "tomorrow": "Tomorrow",
+  "yesterday": "Yesterday",
+  "lastFriday": "Last Friday",
+ 
+  "MockTestReports": {
+    "Title": "Mock Test Reports",
+    "subtitle": "View your progress and scores across subjects"
+  },
+  "excellent": "Excellent",
+  "improved": "Improved",
+  "needsAttention": "Needs Attention",
+  "subjectsList": {
+    "mathematics": "Mathematics",
+    "science": "Science",
+    "english": "English",
+    "social-studies": "Social Studies",
+    "computer": "Computer"
+  },
+  "averageScore": "Average Score",
+  "testsImproved": "Tests Improved",
+  "excellentScores": "Excellent Scores",
+  "detailedSummary": "Detailed Summary",
+  "summaryDesc": "Performance of recent mock tests",
+  "date": "Date",
+  "subject": "Subject",
+  "score": "Score",
+  "progress": "Progress",
+  "status": "Status",
+  "trend": "Trend",
+ 
+  "studyPlanner": "Study Planner",
+  "childLearningSchedule": "Your child's personalized learning schedule",
+  "backToSubjects": "Back to Subjects",
+  "totalStudyContent": "Total Study Content",
+  "videoLessons": "Video Lessons",
+  "selectSubject": "Select a Subject",
+  "chooseSubject": "Choose a subject to view study materials",
+  "lessonsCompleted": "Lessons Completed",
+  "time": "Time",
+  "totalStudyTime": "Total Study Time",
+  "completionRate": "Completion Rate",
+  "watchVideo": "Watch Video",
+  "priority": "Priority",
+  "high": "High",
+  "medium": "Medium",
+  "low": "Low",
+  "easy": "Easy",
+  "hard": "Hard",
+  "Maths": "Maths",
+  "MathDescription": "Explore mathematical concepts, algebra, geometry and problem-solving skills.",
+  "Science": "Science",
+  "ScienceDescription": "Discover the wonders of physics, chemistry, and biology through experiments.",
+  "English": "English",
+  "EnglishDescription": "Develop language skills through literature, grammar, and creative writing.",
+  "Social": "Social",
+  "SocialDescription": "Understand society, history, geography, and civic responsibilities.",
+  "Computer": "Computer",
+  "ComputerDescription": "Learn computer basics, software applications, and digital literacy.",
+  "All Subjects":"All Subjects",
+
+
+
+  
+  "masterSubject": "Master Every Subject with",
+  "smartPractice": "Smart Practice",
+  "challengeDescription": "Challenge yourself with comprehensive practice modules. Built for students with instant feedback and detailed analytics.",
+  "practiceTests": "Practice Tests",
+  "studentsLearning": "Students Learning",
+  "whyChoose": "Why Choose NOVYA Practice?",
+  "revolutionaryExperience": "Experience a revolutionary way to practice and master your subjects",
+  "features": {
+    "personalizedLearning": "Personalized Learning",
+    "instantFeedback": "Instant Feedback",
+    "progressAnalytics": "Progress Analytics",
+    "gamifiedExperience": "Gamified Experience",
+    "vastQuestionBank": "Vast Question Bank",
+    "expertCrafted": "Expert Crafted"
+  },
+  "featureDescriptions": {
+    "personalizedLearning": "AI-powered recommendations based on your performance and learning style",
+    "instantFeedback": "Get real-time explanations and corrections to improve faster",
+    "progressAnalytics": "Track your improvement with detailed insights and performance metrics",
+    "gamifiedExperience": "Earn badges, climb leaderboards, and compete with peers",
+    "vastQuestionBank": "Access thousands of curated questions across all subjects",
+    "expertCrafted": "Content designed by subject matter experts and educators"
+  },
+  "exploreCategories": "Explore Practice Categories",
+  "chooseSubjects": "Choose from our comprehensive collection of subjects",
+  "subjects": {
+    "English": "English",
+    "Telugu": "Telugu",
+    "Mathematics": "Mathematics",
+    "Social": "Social",
+    "Science": "Science",
+    "Computers": "Computers"
+  },
+  "practiceTestsCount": "Practice Tests",
+  "howItWorks": "How It Works",
+  "getStarted": "Get started in just three simple steps",
+  "steps": {
+    "chooseSubject": "Choose Your Subject",
+    "startPracticing": "Start Practicing",
+    "trackProgress": "Track Progress"
+  },
+  "stepDescriptions": {
+    "chooseSubject": "Select from our wide range of subjects and difficulty levels",
+    "startPracticing": "Answer questions with real-time feedback and detailed explanations",
+    "trackProgress": "Monitor your improvement with comprehensive analytics and insights"
+  },
+  "readyToExcel": "Ready to Excel in Your Studies?",
+  "joinStudents": "Join thousands of students who are already improving their grades with NOVYA"
+
+
+  
+
+}
+
+
