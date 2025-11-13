@@ -95,8 +95,15 @@ const Career = () => {
         console.log('🔍 Debug - Token preview:', token ? token.substring(0, 50) + '...' : 'No token');
         
         console.log('🔍 Debug - Starting API calls...');
+        // Determine child email for parent users
+        const userRole = localStorage.getItem('userRole');
+        const childEmail =
+          userRole && userRole.toLowerCase() === 'parent'
+            ? localStorage.getItem('childEmail')
+            : null;
+
         // Use only the working endpoint to avoid loading issues
-        const recentAttemptsRes = await getRecentQuizAttempts(10);
+        const recentAttemptsRes = await getRecentQuizAttempts(10, childEmail);
         
         console.log('🔍 Debug - API responses received:');
         console.log('🔍 Debug - Recent attempts data:', recentAttemptsRes);

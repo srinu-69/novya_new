@@ -92,10 +92,13 @@ export const getQuizStatistics = async () => {
 /**
  * Get recent quiz attempts for current user from database
  */
-export const getRecentQuizAttempts = async (limit = 10) => {
+export const getRecentQuizAttempts = async (limit = 10, childEmail) => {
   try {
     console.log('🔍 Fetching recent quiz attempts from database...');
-    const response = await quizTrackingAPI.getRecentAttempts(limit);
+    const response = await quizTrackingAPI.getRecentAttempts({
+      limit,
+      childEmail,
+    });
     console.log('✅ Recent quiz attempts fetched:', response);
     return response;
   } catch (error) {

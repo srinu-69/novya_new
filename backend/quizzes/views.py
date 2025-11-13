@@ -11,7 +11,7 @@ from .models import (
     Quiz, QuizQuestion, QuizAttempt, QuizAnswer, MockTest, MockTestQuestion, MockTestAttempt, MockTestAnswer,
     Question, QuestionOption, QuizResult, QuizAnalytics, StudentPerformance
 )
-from authentication.models import StudentRegistration
+from authentication.models import StudentRegistration, ParentRegistration, ParentStudentMapping
 
 def get_student_registration(user):
     """
@@ -32,6 +32,99 @@ def get_student_registration(user):
             return None
     except Exception:
         return None
+
+
+def resolve_student_registration(request, allow_parent_child=True):
+    """
+    Resolve the StudentRegistration record for the current request.
+    Supports parent users selecting a child via query parameter.
+    """
+    child_email = (
+        request.query_params.get('child_email')
+        or request.query_params.get('childEmail')
+        or request.query_params.get('student_email')
+    )
+    child_email = child_email.strip() if child_email else None
+
+    # Parent users: fetch child linked to their account
+    if allow_parent_child and getattr(request.user, 'role', None) == 'Parent':
+        try:
+            parent_registration = ParentRegistration.objects.get(parent_username=request.user.username)
+        except ParentRegistration.DoesNotExist:
+            return None, Response(
+                {'error': 'Parent registration not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        mapping_qs = ParentStudentMapping.objects.filter(parent_email=parent_registration.email)
+        if mapping_qs.exists():
+            student_qs = StudentRegistration.objects.filter(
+                student_id__in=mapping_qs.values_list('student_id', flat=True)
+            )
+        else:
+            student_qs = StudentRegistration.objects.filter(parent_email=parent_registration.email)
+
+        def parent_has_access(student):
+            if not student:
+                return False
+            mapping_qs = ParentStudentMapping.objects.filter(parent_email=parent_registration.email)
+            if mapping_qs.exists():
+                return mapping_qs.filter(student_id=student.student_id).exists()
+            return True
+
+        if child_email:
+            child_email = child_email.strip()
+            scoped_qs = student_qs.filter(student_email__iexact=child_email)
+            if scoped_qs.exists():
+                student_qs = scoped_qs
+            else:
+                direct_qs = StudentRegistration.objects.filter(student_email__iexact=child_email)
+                if not direct_qs.exists():
+                    direct_qs = StudentRegistration.objects.filter(student_username__iexact=child_email)
+                if direct_qs.exists() and parent_has_access(direct_qs.first()):
+                    student_qs = direct_qs
+                else:
+                    return None, Response(
+                        {'error': f'No child found with email {child_email} for this parent.'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+        if not student_qs.exists():
+            # As a final fallback, if child_email was provided, try direct lookup
+            if child_email:
+                direct_qs = StudentRegistration.objects.filter(student_email__iexact=child_email)
+                if not direct_qs.exists():
+                    direct_qs = StudentRegistration.objects.filter(student_username__iexact=child_email)
+                if direct_qs.exists() and parent_has_access(direct_qs.first()):
+                    student_qs = direct_qs
+                else:
+                    return None, Response(
+                        {'error': 'No child found linked to this parent account.'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                return None, Response(
+                    {'error': 'No child found linked to this parent account.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        return student_qs.order_by('student_id').first(), None
+
+    # Optional direct lookup by child email (for admins or fallback)
+    if child_email:
+        try:
+            return StudentRegistration.objects.get(student_email__iexact=child_email), None
+        except StudentRegistration.DoesNotExist:
+            pass
+
+    # Default: resolve using authenticated student user
+    student_reg = get_student_registration(request.user)
+    if not student_reg:
+        return None, Response(
+            {'error': 'Student registration not found. Please complete your registration first.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    return student_reg, None
 
 def get_chapter_for_subtopic(class_name, subject, subtopic):
     """
@@ -970,12 +1063,10 @@ def get_recent_quiz_attempts(request):
     except ValueError:
         limit = 10
     
-    # Get student registration
-    student_reg = get_student_registration(request.user)
-    if not student_reg:
-        return Response({
-            'error': 'Student registration not found. Please complete your registration first.'
-        }, status=status.HTTP_404_NOT_FOUND)
+    # Resolve student registration (supports parent child selection)
+    student_reg, error_response = resolve_student_registration(request, allow_parent_child=True)
+    if error_response:
+        return error_response
     
     # Get both quiz attempts and mock test attempts
     quiz_attempts = QuizAttempt.objects.filter(
@@ -1062,95 +1153,76 @@ def get_child_quiz_attempts(request):
     except ValueError:
         limit = 50
     
-    try:
-        # Get parent registration
-        from authentication.models import ParentRegistration
-        parent_registration = ParentRegistration.objects.get(parent_username=user.username)
+    student_reg, error_response = resolve_student_registration(request, allow_parent_child=True)
+    if error_response:
+        return error_response
+
+    # Get both quiz attempts and mock test attempts for the child
+    quiz_attempts = QuizAttempt.objects.filter(
+        student_id=student_reg
+    ).order_by('-attempted_at')
+    
+    mock_test_attempts = MockTestAttempt.objects.filter(
+        student_id=student_reg
+    ).order_by('-attempted_at')
+    
+    # Combine and sort by attempted_at, then limit
+    all_attempts = []
+    
+    # Add quiz attempts with type indicator
+    for attempt in quiz_attempts:
+        # Get proper chapter name based on subtopic
+        class_name = attempt.class_name or 'Unknown Class'
+        subject = attempt.subject or 'Unknown Subject'
+        subtopic = attempt.subtopic or 'Unknown Topic'
         
-        # Find student(s) linked to this parent via parent_email
-        from authentication.models import StudentRegistration
-        student_registrations = StudentRegistration.objects.filter(parent_email=parent_registration.email)
+        # Try to get chapter from database first, then from FastAPI mapping
+        chapter_name = attempt.chapter
+        if not chapter_name or chapter_name.strip() == '':
+            chapter_name = get_chapter_for_subtopic(class_name, subject, subtopic)
         
-        if not student_registrations.exists():
-            return Response({'error': 'No child found linked to this parent account.'}, 
-                           status=status.HTTP_404_NOT_FOUND)
-        
-        # For now, get the first student (can be extended for multiple children)
-        student_reg = student_registrations.first()
-        
-        # Get both quiz attempts and mock test attempts for the child
-        quiz_attempts = QuizAttempt.objects.filter(
-            student_id=student_reg
-        ).order_by('-attempted_at')
-        
-        mock_test_attempts = MockTestAttempt.objects.filter(
-            student_id=student_reg
-        ).order_by('-attempted_at')
-        
-        # Combine and sort by attempted_at, then limit
-        all_attempts = []
-        
-        # Add quiz attempts with type indicator
-        for attempt in quiz_attempts:
-            # Get proper chapter name based on subtopic
-            class_name = attempt.class_name or 'Unknown Class'
-            subject = attempt.subject or 'Unknown Subject'
-            subtopic = attempt.subtopic or 'Unknown Topic'
-            
-            # Try to get chapter from database first, then from FastAPI mapping
-            chapter_name = attempt.chapter
-            if not chapter_name or chapter_name.strip() == '':
-                chapter_name = get_chapter_for_subtopic(class_name, subject, subtopic)
-            
-            all_attempts.append({
-                'attempt_id': attempt.attempt_id,
-                'type': 'quiz',
-                'quiz_type': attempt.quiz_type,
-                'class_name': class_name,
-                'subject': subject,
-                'chapter': chapter_name,
-                'subtopic': subtopic,
-                'score': attempt.score,
-                'attempted_at': attempt.attempted_at,
-                'completion_percentage': getattr(attempt, 'completion_percentage', None)
-            })
-        
-        # Add mock test attempts with type indicator
-        for attempt in mock_test_attempts:
-            all_attempts.append({
-                'attempt_id': attempt.attempt_id,
-                'type': 'mock_test',
-                'quiz_type': 'mock_test',
-                'class_name': getattr(attempt, 'class_name', None) or 'Unknown Class',
-                'subject': getattr(attempt, 'subject', None) or 'Mock Test',
-                'subtopic': getattr(attempt, 'subtopic', None) or (attempt.test_id.title if attempt.test_id else 'Mock Test'),
-                'score': attempt.score,
-                'attempted_at': attempt.attempted_at,
-                'completion_percentage': None
-            })
-        
-        # Sort by attempted_at (most recent first) and limit
-        all_attempts.sort(key=lambda x: x['attempted_at'], reverse=True)
-        all_attempts = all_attempts[:limit]
-        
-        return Response({
-            'attempts': all_attempts,
-            'total_count': len(all_attempts),
-            'quiz_count': len([a for a in all_attempts if a['type'] == 'quiz']),
-            'mock_test_count': len([a for a in all_attempts if a['type'] == 'mock_test']),
-            'child_info': {
-                'student_name': f"{student_reg.first_name} {student_reg.last_name}",
-                'student_username': student_reg.student_username,
-                'class_name': getattr(student_reg, 'class_name', 'Unknown Class')
-            }
+        all_attempts.append({
+            'attempt_id': attempt.attempt_id,
+            'type': 'quiz',
+            'quiz_type': attempt.quiz_type,
+            'class_name': class_name,
+            'subject': subject,
+            'chapter': chapter_name,
+            'subtopic': subtopic,
+            'score': attempt.score,
+            'attempted_at': attempt.attempted_at,
+            'completion_percentage': getattr(attempt, 'completion_percentage', None)
         })
-        
-    except ParentRegistration.DoesNotExist:
-        return Response({'error': 'Parent registration not found.'}, 
-                       status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({'error': f'Failed to fetch child quiz attempts: {str(e)}'}, 
-                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # Add mock test attempts with type indicator
+    for attempt in mock_test_attempts:
+        all_attempts.append({
+            'attempt_id': attempt.attempt_id,
+            'type': 'mock_test',
+            'quiz_type': 'mock_test',
+            'class_name': getattr(attempt, 'class_name', None) or 'Unknown Class',
+            'subject': getattr(attempt, 'subject', None) or 'Mock Test',
+            'subtopic': getattr(attempt, 'subtopic', None) or (attempt.test_id.title if attempt.test_id else 'Mock Test'),
+            'score': attempt.score,
+            'attempted_at': attempt.attempted_at,
+            'completion_percentage': None
+        })
+    
+    # Sort by attempted_at (most recent first) and limit
+    all_attempts.sort(key=lambda x: x['attempted_at'], reverse=True)
+    all_attempts = all_attempts[:limit]
+    
+    return Response({
+        'attempts': all_attempts,
+        'total_count': len(all_attempts),
+        'quiz_count': len([a for a in all_attempts if a['type'] == 'quiz']),
+        'mock_test_count': len([a for a in all_attempts if a['type'] == 'mock_test']),
+        'child_info': {
+            'student_name': f"{student_reg.first_name} {student_reg.last_name}",
+            'student_username': student_reg.student_username,
+            'class_name': getattr(student_reg, 'class_name', 'Unknown Class')
+        }
+    })
 
 
 @api_view(['GET'])
@@ -1159,12 +1231,10 @@ def get_student_performance(request):
     """
     Get student performance statistics from actual quiz and mock test attempts
     """
-    # Get student registration
-    student_reg = get_student_registration(request.user)
-    if not student_reg:
-        return Response({
-            'error': 'Student registration not found. Please complete your registration first.'
-        }, status=status.HTTP_404_NOT_FOUND)
+    # Resolve student registration (supports parent child selection)
+    student_reg, error_response = resolve_student_registration(request, allow_parent_child=True)
+    if error_response:
+        return error_response
     
     # Get all quiz attempts and mock test attempts for this student
     quiz_attempts = QuizAttempt.objects.filter(student_id=student_reg)
@@ -1327,10 +1397,10 @@ def get_quiz_statistics(request):
     """
     student = request.user
     
-    # Get student registration
-    student_reg = get_student_registration(student)
-    if not student_reg:
-        return Response({'error': 'Student registration not found'}, status=status.HTTP_404_NOT_FOUND)
+    # Resolve student registration (supports parent child selection)
+    student_reg, error_response = resolve_student_registration(request, allow_parent_child=True)
+    if error_response:
+        return error_response
     
     # Get all quiz and mock test attempts
     quiz_attempts = QuizAttempt.objects.filter(student_id=student_reg)

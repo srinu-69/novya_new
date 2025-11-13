@@ -4,7 +4,8 @@ import {
   FaChartLine, FaMedal, FaExclamationTriangle, FaArrowUp
 } from 'react-icons/fa';
 import { Table } from 'react-bootstrap';
-import { API_CONFIG, djangoAPI } from '../../config/api';
+import { getChildEmailForParent } from '../../config/api';
+import { getRecentQuizAttempts } from '../../utils/quizTracking';
 
 // Status configuration function
 const getStatusConfig = (status, t) => {
@@ -53,65 +54,74 @@ const QuizReports = () => {
   // Fetch quiz data from backend
   useEffect(() => {
     console.log('🔍 Debug - QuizReports useEffect called');
-    console.log('🔍 Debug - API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS:', API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
-    
+  
     const fetchQuizData = async () => {
       try {
         console.log('🔍 Debug - Fetching quiz data from backend...');
         
-        // Check if we already have data in localStorage to avoid duplicate calls
-        const cachedData = localStorage.getItem('quizReportsData');
-        const lastFetch = localStorage.getItem('quizReportsDataLastFetch');
+        const childEmail = getChildEmailForParent();
+        const cacheKey = childEmail ? `quizReportsData_${childEmail}` : 'quizReportsData';
+        const cacheTimeKey = childEmail ? `quizReportsDataLastFetch_${childEmail}` : 'quizReportsDataLastFetch';
+
+        const cachedData = localStorage.getItem(cacheKey);
+        const lastFetch = localStorage.getItem(cacheTimeKey);
         const now = Date.now();
         
         // Use cached data if it's less than 5 minutes old
         if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 300000) {
-          console.log('🔍 Debug - Using cached quiz reports data');
           const parsedData = JSON.parse(cachedData);
-          setQuizData(parsedData || []);
-          setLoading(false);
-          return;
+          const hasCachedAttempts = Array.isArray(parsedData) && parsedData.length > 0;
+          if (hasCachedAttempts) {
+            console.log('🔍 Debug - Using cached quiz reports data (non-empty)');
+            setQuizData(parsedData);
+            setLoading(false);
+            return;
+          }
         }
         
-        console.log('🔍 Debug - URL:', API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
-        const response = await djangoAPI.get(API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
+        const response = await getRecentQuizAttempts(50, childEmail);
         console.log('🔍 Debug - Quiz response:', response);
         
-        if (response && response.attempts) {
-          // Filter for quiz attempts only (not mock tests)
-          const quizzes = response.attempts.filter(attempt => attempt.type === 'quiz');
+        const quizzes = response?.attempts?.filter(attempt => attempt.type === 'quiz') || [];
           
-          console.log('🔍 Debug - Raw quiz attempts from backend:', quizzes);
+        console.log('🔍 Debug - Raw quiz attempts from backend:', quizzes);
           
-          // Transform the data to match our component structure
-          const transformedData = quizzes.map(attempt => ({
+        const transformedData = quizzes.map(attempt => {
+          const totalQuestions = attempt.total_questions || 0;
+          const correctAnswers = attempt.correct_answers ?? attempt.score ?? 0;
+          const percentage = totalQuestions > 0
+            ? Math.round((correctAnswers / totalQuestions) * 100)
+            : Math.round(attempt.completion_percentage ?? attempt.score ?? 0);
+
+          const status =
+            percentage >= 80 ? 'Excellent' :
+            percentage >= 60 ? 'Good' :
+            'Needs Attention';
+
+          return {
             subject: attempt.subject || 'Unknown Subject',
             class: attempt.class_name || 'Unknown Class',
             chapter: attempt.chapter || 'Unknown Chapter',
             subtopic: attempt.subtopic || 'General Quiz',
-            date: new Date(attempt.attempted_at).toISOString().split('T')[0],
-            score: attempt.score || 0,
-            total: 100, // Assuming total is 100 for quizzes
-            status: attempt.score >= 80 ? 'Excellent' : attempt.score >= 60 ? 'Good' : 'Needs Attention',
-            trend: 'up', // Default trend
-            improvement: '+0%', // Default improvement
-            // Add additional fields from the backend
+            date: attempt.attempted_at ? new Date(attempt.attempted_at).toISOString().split('T')[0] : 'Unknown',
+            score: correctAnswers,
+            total: totalQuestions || 100,
+            percentage,
+            status,
+            trend: percentage >= 60 ? 'up' : 'down',
+            improvement: '--',
             attempt_id: attempt.attempt_id,
             quiz_type: attempt.quiz_type,
             completion_percentage: attempt.completion_percentage
-          }));
+          };
+        });
           
-          console.log('🔍 Debug - Transformed quiz data:', transformedData);
+        console.log('🔍 Debug - Transformed quiz data:', transformedData);
           
-          // Cache the data
-          localStorage.setItem('quizReportsData', JSON.stringify(transformedData));
-          localStorage.setItem('quizReportsDataLastFetch', now.toString());
+        localStorage.setItem(cacheKey, JSON.stringify(transformedData));
+        localStorage.setItem(cacheTimeKey, now.toString());
           
-          setQuizData(transformedData);
-        } else {
-          console.log('🔍 Debug - No quiz data found, using fallback');
-          setQuizData([]);
-        }
+        setQuizData(transformedData);
       } catch (error) {
         console.error('❌ Error fetching quiz data:', error);
         console.error('❌ Error details:', error.message);
@@ -130,7 +140,7 @@ const QuizReports = () => {
   const quizCount = quizData.length;
   const upQuizzes = quizData.filter(q => q.trend === 'up').length;
   const avgScore = quizCount > 0 ? Math.round(
-    quizData.reduce((a, b) => a + b.score, 0) / quizCount
+    quizData.reduce((sum, quiz) => sum + (quiz.percentage ?? 0), 0) / quizCount
   ) : 0;
   const excQuizzes = quizData.filter(q => q.status === 'Excellent').length;
 
@@ -379,7 +389,7 @@ const QuizReports = () => {
                     </thead>
                     <tbody>
                       {quizData.map((quiz, index) => {
-                        const percentage = (quiz.score / quiz.total) * 100;
+                        const percentage = quiz.percentage ?? ((quiz.score / (quiz.total || 100)) * 100);
                         const status = getStatusConfig(quiz.status, t);
                         const isUp = quiz.trend === 'up';
                         return (
@@ -393,7 +403,7 @@ const QuizReports = () => {
                             <td className="text-center fw-bold">{quiz.class}</td>
                             <td className="text-center fw-bold">{t(`subjects.${quiz.subject.toLowerCase().replace(' ', '-')}`, { defaultValue: quiz.subject })}</td>
                             <td className="text-center fw-semibold">
-                              {quiz.score}<span className="text-muted">/{quiz.total}</span>
+                              {quiz.score}{quiz.total ? <span className="text-muted">/{quiz.total}</span> : null}
                             </td>
                             <td>
                               <div className="progress-container justify-content-center">
@@ -434,9 +444,8 @@ const QuizReports = () => {
                 </div>
                 <div className="test-list">
                   {quizData.map((quiz, index) => {
-                    const percentage = (quiz.score / quiz.total) * 100;
+                    const percentage = quiz.percentage ?? ((quiz.score / (quiz.total || 100)) * 100);
                     const status = getStatusConfig(quiz.status, t);
-                    const isUp = quiz.trend === 'up';
                     return (
                       <div key={index} className="test-item" style={{
                         animation: `fadeInUp 0.5s ease-in ${index * 0.1}s`,
@@ -446,7 +455,7 @@ const QuizReports = () => {
                         <div><span className="test-label">Date:</span> <span className="test-value">{quiz.date}</span></div>
                         <div><span className="test-label">Class:</span> <span className="test-value">{quiz.class}</span></div>
                         <div><span className="test-label">Subject:</span> <span className="test-value">{t(`subjects.${quiz.subject.toLowerCase().replace(' ', '-')}`, { defaultValue: quiz.subject })}</span></div>
-                        <div><span className="test-label">Score:</span> <span className="test-value">{quiz.score}/{quiz.total}</span></div>
+                        <div><span className="test-label">Score:</span> <span className="test-value">{quiz.score}{quiz.total ? `/${quiz.total}` : ''}</span></div>
                         <div className="progress-container">
                           <div className="progress-bar-wrapper">
                             <div className="progress-bar" style={{

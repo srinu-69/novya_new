@@ -172,8 +172,16 @@ const ChildProfile = () => {
       try {
         console.log('🔍 Debug - Fetching child data from backend...');
         
+        // Determine which child to fetch (default to first linked child)
+        const storedChildEmail = localStorage.getItem('childEmail');
+        let endpoint = API_CONFIG.DJANGO.AUTH.CHILD_PROFILE;
+        if (storedChildEmail && storedChildEmail.trim()) {
+          endpoint = `${endpoint}?child_email=${encodeURIComponent(storedChildEmail.trim())}`;
+          console.log('🔍 Debug - Using child email filter:', storedChildEmail);
+        }
+
         // Fetch child data from backend API
-        const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.CHILD_PROFILE);
+        const response = await djangoAPI.get(endpoint);
         console.log('🔍 Debug - Backend response:', response);
         
         if (response && response.student_registration) {

@@ -594,7 +594,8 @@ import {
   FaChartLine, FaMedal, FaExclamationTriangle, FaArrowUp
 } from 'react-icons/fa';
 import { Table } from 'react-bootstrap';
-import { API_CONFIG, djangoAPI } from '../../config/api';
+import { getChildEmailForParent } from '../../config/api';
+import { getRecentQuizAttempts } from '../../utils/quizTracking';
  
 // Data
 const mockTestData = [
@@ -692,64 +693,73 @@ const MockTestReports = () => {
   // Fetch mock test data from backend
   useEffect(() => {
     console.log('🔍 Debug - MockTestReports useEffect called');
-    console.log('🔍 Debug - API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS:', API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
     
     const fetchMockTestData = async () => {
       try {
         console.log('🔍 Debug - Fetching mock test data from backend...');
         
         // Check if we already have data in localStorage to avoid duplicate calls
-        const cachedData = localStorage.getItem('mockTestReportsData');
-        const lastFetch = localStorage.getItem('mockTestReportsDataLastFetch');
+        const childEmail = getChildEmailForParent();
+        const cacheKey = childEmail ? `mockTestReportsData_${childEmail}` : 'mockTestReportsData';
+        const cacheTimeKey = childEmail ? `mockTestReportsDataLastFetch_${childEmail}` : 'mockTestReportsDataLastFetch';
+
+        const cachedData = localStorage.getItem(cacheKey);
+        const lastFetch = localStorage.getItem(cacheTimeKey);
         const now = Date.now();
         
         // Use cached data if it's less than 5 minutes old
         if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 300000) {
-          console.log('🔍 Debug - Using cached mock test reports data');
           const parsedData = JSON.parse(cachedData);
-          setMockTestData(parsedData || []);
-          setLoading(false);
-          return;
+          const hasCachedAttempts = Array.isArray(parsedData) && parsedData.length > 0;
+          if (hasCachedAttempts) {
+            console.log('🔍 Debug - Using cached mock test reports data (non-empty)');
+            setMockTestData(parsedData);
+            setLoading(false);
+            return;
+          }
         }
         
-        console.log('🔍 Debug - URL:', API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
-        const response = await djangoAPI.get(API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
+        const response = await getRecentQuizAttempts(50, childEmail);
         console.log('🔍 Debug - Mock test response:', response);
         
-        if (response && response.attempts) {
-          // Filter for mock test attempts only
-          const mockTests = response.attempts.filter(attempt => attempt.type === 'mock_test');
+        const mockTests = response?.attempts?.filter(attempt => attempt.type === 'mock_test') || [];
+        console.log('🔍 Debug - Raw mock test attempts from backend:', mockTests);
+
+        const transformedData = mockTests.map(attempt => {
+          const totalQuestions = attempt.total_questions || 0;
+          const correctAnswers = attempt.correct_answers ?? attempt.score ?? 0;
+          const percentage = totalQuestions > 0
+            ? Math.round((correctAnswers / totalQuestions) * 100)
+            : Math.round(attempt.completion_percentage ?? attempt.score ?? 0);
           
-          console.log('🔍 Debug - Raw mock test attempts from backend:', mockTests);
+          const status =
+            percentage >= 80 ? 'Excellent' :
+            percentage >= 60 ? 'Good' :
+            'Needs Attention';
           
-          // Transform the data to match our component structure
-          const transformedData = mockTests.map(attempt => ({
+          return {
             subject: attempt.subject || 'Unknown Subject',
             class: attempt.class_name || 'Unknown Class',
             subtopic: attempt.subtopic || 'General Test',
-            date: new Date(attempt.attempted_at).toISOString().split('T')[0],
-            score: attempt.score || 0,
-            total: 100, // Assuming total is 100 for mock tests
-            status: attempt.score >= 80 ? 'Excellent' : attempt.score >= 60 ? 'Good' : 'Needs Attention',
-            trend: 'up', // Default trend
-            improvement: '+0%', // Default improvement
-            // Add additional fields from the backend
+            date: attempt.attempted_at ? new Date(attempt.attempted_at).toISOString().split('T')[0] : 'Unknown',
+            score: correctAnswers,
+            total: totalQuestions || 100,
+            percentage,
+            status,
+            trend: percentage >= 60 ? 'up' : 'down',
+            improvement: '--',
             attempt_id: attempt.attempt_id,
             quiz_type: attempt.quiz_type,
-            completion_percentage: attempt.completion_percentage
-          }));
-          
-          console.log('🔍 Debug - Transformed mock test data:', transformedData);
-          
-          // Cache the data
-          localStorage.setItem('mockTestReportsData', JSON.stringify(transformedData));
-          localStorage.setItem('mockTestReportsDataLastFetch', now.toString());
-          
-          setMockTestData(transformedData);
-        } else {
-          console.log('🔍 Debug - No mock test data found, using fallback');
-          setMockTestData([]);
-        }
+            completion_percentage: attempt.completion_percentage,
+          };
+        });
+        
+        console.log('🔍 Debug - Transformed mock test data:', transformedData);
+        
+        localStorage.setItem(cacheKey, JSON.stringify(transformedData));
+        localStorage.setItem(cacheTimeKey, now.toString());
+        
+        setMockTestData(transformedData);
       } catch (error) {
         console.error('❌ Error fetching mock test data:', error);
         console.error('❌ Error details:', error.message);
@@ -768,7 +778,7 @@ const MockTestReports = () => {
   const testCount = mockTestData.length;
   const upTests = mockTestData.filter(t => t.trend === 'up').length;
   const avgScore = testCount > 0 ? Math.round(
-    mockTestData.reduce((a, b) => a + b.score, 0) / testCount
+    mockTestData.reduce((sum, test) => sum + (test.percentage ?? 0), 0) / testCount
   ) : 0;
   const excTests = mockTestData.filter(t => t.status === 'Excellent').length;
  
@@ -1145,7 +1155,7 @@ const MockTestReports = () => {
                       </thead>
                       <tbody>
                         {mockTestData.map((test, index) => {
-                          const percentage = (test.score / test.total) * 100;
+                          const percentage = test.percentage ?? ((test.score / (test.total || 100)) * 100);
                           const status = getStatusConfig(test.status, t);
                           const isUp = test.trend === 'up';
                           return (
@@ -1159,7 +1169,7 @@ const MockTestReports = () => {
                               <td className="text-center fw-bold">{test.class}</td>
                               <td className="text-center fw-bold">{t(`subjects.${test.subject.toLowerCase().replace(' ', '-')}`, { defaultValue: test.subject })}</td>
                               <td className="text-center fw-semibold">
-                                {test.score}<span className="text-muted">/{test.total}</span>
+                                {test.score}{test.total ? <span className="text-muted">/{test.total}</span> : null}
                               </td>
                               <td>
                                 <div className="progress-container justify-content-center">
@@ -1197,7 +1207,7 @@ const MockTestReports = () => {
                   </div>
                   <div className="test-list">
                     {mockTestData.map((test, index) => {
-                      const percentage = (test.score / test.total) * 100;
+                      const percentage = test.percentage ?? ((test.score / (test.total || 100)) * 100);
                       const status = getStatusConfig(test.status, t);
                       const isUp = test.trend === 'up';
                       return (
@@ -1209,7 +1219,7 @@ const MockTestReports = () => {
                           <div><span className="test-label">{t('date')}:</span> <span className="test-value">{test.date}</span></div>
                           <div><span className="test-label">Class:</span> <span className="test-value">{test.class}</span></div>
                           <div><span className="test-label">{t('subject')}:</span> <span className="test-value">{t(`subjects.${test.subject.toLowerCase().replace(' ', '-')}`, { defaultValue: test.subject })}</span></div>
-                          <div><span className="test-label">{t('score')}:</span> <span className="test-value">{test.score}/{test.total}</span></div>
+                          <div><span className="test-label">{t('score')}:</span> <span className="test-value">{test.score}{test.total ? `/${test.total}` : ''}</span></div>
                           <div className="progress-container">
                             <div className="progress-bar-wrapper">
                               <div className="progress-bar" style={{

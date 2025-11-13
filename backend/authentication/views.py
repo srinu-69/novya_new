@@ -635,9 +635,25 @@ def get_child_profile_for_parent(request):
         if not student_registrations.exists():
             return Response({'error': 'No child found linked to this parent account.'}, 
                            status=status.HTTP_404_NOT_FOUND)
+
+        # Allow selecting a specific child by email (case-insensitive)
+        child_email_param = (
+            request.query_params.get('child_email')
+            or request.query_params.get('childEmail')
+            or request.query_params.get('student_email')
+        )
+        selected_student_qs = student_registrations
+        if child_email_param:
+            child_email_param = child_email_param.strip()
+            selected_student_qs = student_registrations.filter(student_email__iexact=child_email_param)
+            if not selected_student_qs.exists():
+                return Response(
+                    {'error': f'No child found with email {child_email_param} for this parent.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
         
-        # For now, get the first student (can be extended for multiple children)
-        student_reg = student_registrations.first()
+        # Select the requested child, or default to the first linked child
+        student_reg = selected_student_qs.order_by('student_id').first()
         
         # Get student profile data
         try:
@@ -709,10 +725,25 @@ def get_parent_profile_with_child_address(request):
         # Find student(s) linked to this parent via parent_email
         student_registrations = StudentRegistration.objects.filter(parent_email=parent_registration.email)
         
-        # Get child's address from student profile (use first child's address)
+        # Determine which child to use (defaults to first linked child)
         child_address = 'Not specified'
+        student_reg = None
         if student_registrations.exists():
-            student_reg = student_registrations.first()
+            child_email_param = (
+                request.query_params.get('child_email')
+                or request.query_params.get('childEmail')
+                or request.query_params.get('student_email')
+            )
+            selected_students = student_registrations
+            if child_email_param:
+                child_email_param = child_email_param.strip()
+                selected_students = student_registrations.filter(student_email__iexact=child_email_param)
+                if not selected_students.exists():
+                    return Response(
+                        {'error': f'No child found with email {child_email_param} for this parent.'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            student_reg = selected_students.order_by('student_id').first()
             try:
                 student_profile = StudentProfile.objects.get(student_id=student_reg.student_id)
                 child_address = student_profile.address if student_profile.address else 'Not specified'

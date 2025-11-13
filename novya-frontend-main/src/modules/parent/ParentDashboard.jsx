@@ -29,7 +29,7 @@ import {
 } from 'react-icons/hi2';
 import novyaLogo from '../home/assets/NOVYA LOGO.png';
 import { FaPhoneAlt } from 'react-icons/fa';
-import { API_CONFIG, djangoAPI } from '../../config/api';
+import { API_CONFIG, djangoAPI, appendChildEmail, getChildEmailForParent } from '../../config/api';
 import './styles.css';
 
 // const ParentDashboard = () => {
@@ -2183,7 +2183,12 @@ const ParentDashboard = () => {
     const fetchParentData = async () => {
       try {
         console.log('🔍 Debug - Fetching parent profile from backend...');
-        const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.PARENT_PROFILE);
+        const childEmail = getChildEmailForParent();
+        const parentProfileEndpoint = appendChildEmail(API_CONFIG.DJANGO.AUTH.PARENT_PROFILE, childEmail);
+        if (childEmail) {
+          console.log('🔍 Debug - Fetching parent profile for child email:', childEmail);
+        }
+        const response = await djangoAPI.get(parentProfileEndpoint);
         console.log('🔍 Debug - Parent profile response:', response);
         
         if (response && response.parent_registration) {
@@ -2304,36 +2309,68 @@ const ParentDashboard = () => {
       try {
         console.log('🔍 Debug - Fetching progress data for dashboard...');
         
+        const childEmail = getChildEmailForParent();
+        const cacheKey = childEmail ? `progressData_${childEmail}` : 'progressData';
+        const cacheTimeKey = childEmail ? `progressDataLastFetch_${childEmail}` : 'progressDataLastFetch';
+
         // Check if we have cached data
-        const cachedData = localStorage.getItem('progressData');
-        const lastFetch = localStorage.getItem('progressDataLastFetch');
+        const cachedData = localStorage.getItem(cacheKey);
+        const lastFetch = localStorage.getItem(cacheTimeKey);
         const now = Date.now();
         
         if (cachedData && lastFetch && (now - parseInt(lastFetch)) < 300000) {
-          console.log('🔍 Debug - Using cached progress data for dashboard');
           const parsedData = JSON.parse(cachedData);
-          const allAttempts = [...(parsedData.quizData || []), ...(parsedData.mockTestData || [])];
-          const totalTests = allAttempts.length;
-          const totalScore = allAttempts.reduce((sum, attempt) => sum + attempt.score, 0);
-          const overallScore = totalTests > 0 ? Math.round(totalScore / totalTests) : 0;
-          
-          setProgressData({
-            overallScore,
-            totalTests,
-            loading: false
-          });
-          return;
+          const cachedQuizLen = parsedData?.quizData?.length || 0;
+          const cachedMockLen = parsedData?.mockTestData?.length || 0;
+          if ((cachedQuizLen + cachedMockLen) > 0) {
+            console.log('🔍 Debug - Using cached progress data for dashboard (non-empty)');
+            const allAttempts = [...(parsedData.quizData || []), ...(parsedData.mockTestData || [])];
+            const totalTests = allAttempts.length;
+            const totalPercentage = allAttempts.reduce((sum, attempt) => sum + (attempt.percentage ?? 0), 0);
+            const overallScore = totalTests > 0 ? Math.round(totalPercentage / totalTests) : 0;
+            
+            setProgressData({
+              overallScore,
+              totalTests,
+              loading: false
+            });
+            return;
+          }
         }
         
-        const response = await djangoAPI.get(API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS);
+        const attemptsEndpoint = appendChildEmail(API_CONFIG.DJANGO.QUIZZES.CHILD_ATTEMPTS, childEmail);
+        const response = await djangoAPI.get(attemptsEndpoint);
         console.log('🔍 Debug - Dashboard progress response:', response);
         
         if (response && response.attempts) {
-          const allAttempts = response.attempts;
-          const totalTests = allAttempts.length;
-          const totalScore = allAttempts.reduce((sum, attempt) => sum + (attempt.score || 0), 0);
-          const overallScore = totalTests > 0 ? Math.round(totalScore / totalTests) : 0;
+          const transformAttempt = (attempt) => {
+            const totalQuestions = attempt.total_questions || 0;
+            const correctAnswers = attempt.correct_answers ?? attempt.score ?? 0;
+            const percentage = totalQuestions > 0
+              ? Math.round((correctAnswers / totalQuestions) * 100)
+              : Math.round(attempt.completion_percentage ?? attempt.score ?? 0);
+
+            return {
+              ...attempt,
+              total: totalQuestions || 100,
+              score: correctAnswers,
+              percentage,
+            };
+          };
+
+          const transformedAttempts = response.attempts.map(transformAttempt);
+          const totalTests = transformedAttempts.length;
+          const totalPercentage = transformedAttempts.reduce((sum, attempt) => sum + (attempt.percentage ?? 0), 0);
+          const overallScore = totalTests > 0 ? Math.round(totalPercentage / totalTests) : 0;
           
+          const dataToCache = {
+            quizData: transformedAttempts.filter(a => a.type === 'quiz'),
+            mockTestData: transformedAttempts.filter(a => a.type === 'mock_test'),
+          };
+
+          localStorage.setItem(cacheKey, JSON.stringify(dataToCache));
+          localStorage.setItem(cacheTimeKey, now.toString());
+
           setProgressData({
             overallScore,
             totalTests,

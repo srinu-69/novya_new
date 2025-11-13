@@ -11,6 +11,34 @@ const DJANGO_BASE_URL = process.env.REACT_APP_DJANGO_URL || 'http://localhost:80
 const FASTAPI_BASE_URL = process.env.REACT_APP_FASTAPI_URL || 'http://localhost:8000';
 
 /**
+ * Return the child email stored during parent login (if applicable)
+ */
+export const getChildEmailForParent = () => {
+  try {
+    const role = localStorage.getItem('userRole');
+    if (role && role.toLowerCase() === 'parent') {
+      const childEmail = localStorage.getItem('childEmail');
+      return childEmail ? childEmail.trim() : null;
+    }
+  } catch (error) {
+    console.error('❌ Error retrieving child email from localStorage:', error);
+  }
+  return null;
+};
+
+/**
+ * Utility to append child_email query param to an endpoint when needed
+ */
+export const appendChildEmail = (url, childEmail) => {
+  const email = (childEmail ?? getChildEmailForParent()) || null;
+  if (!email) {
+    return url;
+  }
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}child_email=${encodeURIComponent(email)}`;
+};
+
+/**
  * API Endpoints Configuration
  */
 export const API_CONFIG = {
@@ -362,19 +390,29 @@ export const quizTrackingAPI = {
   },
   
   // Get recent quiz attempts for current user
-  getRecentAttempts: async (limit = 10) => {
-    const url = `${API_CONFIG.DJANGO.QUIZZES.RECENT_ATTEMPTS}?limit=${limit}`;
+  getRecentAttempts: async ({ limit = 10, childEmail } = {}) => {
+    const params = new URLSearchParams();
+    if (limit !== undefined && limit !== null) {
+      params.append('limit', limit);
+    }
+    if (childEmail) {
+      params.append('child_email', childEmail);
+    }
+    const query = params.toString();
+    const url = query
+      ? `${API_CONFIG.DJANGO.QUIZZES.RECENT_ATTEMPTS}?${query}`
+      : API_CONFIG.DJANGO.QUIZZES.RECENT_ATTEMPTS;
     return await djangoAPI.get(url);
   },
   
   // Get student performance data from database
-  getPerformance: async () => {
-    return await djangoAPI.get(API_CONFIG.DJANGO.QUIZZES.PERFORMANCE);
+  getPerformance: async (childEmail) => {
+    return await djangoAPI.get(appendChildEmail(API_CONFIG.DJANGO.QUIZZES.PERFORMANCE, childEmail));
   },
   
   // Get detailed quiz statistics from database
-  getStatistics: async () => {
-    return await djangoAPI.get(API_CONFIG.DJANGO.QUIZZES.STATISTICS);
+  getStatistics: async (childEmail) => {
+    return await djangoAPI.get(appendChildEmail(API_CONFIG.DJANGO.QUIZZES.STATISTICS, childEmail));
   },
   
   // Get my quiz attempts (user-specific)
