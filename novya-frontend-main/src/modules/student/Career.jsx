@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ArrowUpRight, BarChart2, BookOpen, Briefcase, Clock, Compass,
@@ -28,8 +27,9 @@ const Career = () => {
   const safeGetMockHistory = getMockHistory || (() => []);
  
   useEffect(() => {
-    document.title = `${t('performance.title')} | NOVYA - Your Smart Learning Platform`;
-  }, [t]);
+    // Hard-coded page title instead of translation key
+    document.title = `Performance | NOVYA - Your Smart Learning Platform`;
+  }, []);
 
   // Fetch logged-in user data (synchronous - no API call needed)
   useEffect(() => {
@@ -359,7 +359,8 @@ const Career = () => {
   const performanceMetrics = useMemo(() => [
     {
       id: 'academic',
-      title: t('performance.academic'),
+      // Hard-coded title instead of translation key
+      title: 'Academic Performance',
       icon: <GraduationCap size={24} />,
       metrics: [
         { name: t('metrics.gpa'), value: 3.8, max: 4.0, trend: 'up' },
@@ -403,7 +404,8 @@ const Career = () => {
     },
     {
       id: 'quiz',
-      title: t('performance.quiz'),
+      // Hard-coded title instead of translation key
+      title: 'Quiz Performance',
       icon: <BookOpen size={24} />,
       metrics: [
         { name: t('metrics.totalQuizzes'), value: dynamicQuizMetrics.totalQuizzes, max: 50, trend: 'up' },
@@ -437,7 +439,8 @@ const Career = () => {
     },
     {
       id: 'mock',
-      title: t('performance.mock'),
+      // Hard-coded title instead of translation key
+      title: 'Mock Performance',
       icon: <Clock size={24} />,
       metrics: [
         { name: t('metrics.totalTests'), value: dynamicMockMetrics.totalTests, max: 10, trend: 'up' },
@@ -461,7 +464,8 @@ const Career = () => {
           labels: [t('mock.chart.label')],
           datasets: [
             {
-              label: t('performance.title'),
+              // Hard-coded label instead of translation key
+              label: 'Performance',
               data: [parseFloat(mockAverage) || 0],
               backgroundColor: 'rgba(75, 192, 192, 0.6)'
             }
@@ -622,7 +626,8 @@ const Career = () => {
       </section>
  
       <section className="performance-section" ref={metricsRef}>
-        <h2 className="section-title">{t('performance.title')}</h2>
+        {/* Hard-coded main title */}
+        <h2 className="section-title">Performance</h2>
         <p className="section-subtitle">
           {t('performance.subtitle')}
         </p>
