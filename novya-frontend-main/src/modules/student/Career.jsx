@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ArrowUpRight, BarChart2, BookOpen, Briefcase, Clock, Compass,
   Globe, GraduationCap, Rocket, Star, Target, TrendingUp, Users, X,
@@ -31,70 +31,81 @@ const Career = () => {
     document.title = `${t('performance.title')} | NOVYA - Your Smart Learning Platform`;
   }, [t]);
 
-  // Fetch logged-in user data
+  // Fetch logged-in user data (synchronous - no API call needed)
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        setLoadingUserData(true);
-        
-        // Get user data from localStorage first
-        const userRole = localStorage.getItem('userRole');
-        const storedData = userRole === 'student' 
-          ? localStorage.getItem('studentData') 
-          : localStorage.getItem('parentData');
-        
-        if (storedData) {
-          try {
-            const parsedData = JSON.parse(storedData);
-            console.log('🔍 Debug - Career page user data from localStorage:', parsedData);
-            setUserData(parsedData);
-          } catch (error) {
-            console.error('❌ Error parsing stored data:', error);
-            console.log('❌ Stored data is not valid JSON:', storedData);
-            // Fall through to fallback data
-          }
-        } else {
-          // Fallback user data
-          const fallbackData = {
-            firstName: 'User',
-            lastName: 'Name',
-            email: 'user@example.com',
-            userName: 'username',
-            role: userRole || 'student'
-          };
-          console.log('🔍 Debug - Career page using fallback user data:', fallbackData);
-          setUserData(fallbackData);
+    try {
+      // Get user data from localStorage first (synchronous, fast)
+      const userRole = localStorage.getItem('userRole');
+      const storedData = userRole === 'student' 
+        ? localStorage.getItem('studentData') 
+        : localStorage.getItem('parentData');
+      
+      if (storedData) {
+        try {
+          const parsedData = JSON.parse(storedData);
+          setUserData(parsedData);
+        } catch (error) {
+          // Fall through to fallback data
         }
-      } catch (error) {
-        console.error('❌ Error fetching user data:', error);
-        // Set fallback data on error
+      } else {
+        // Fallback user data
         setUserData({
           firstName: 'User',
           lastName: 'Name',
           email: 'user@example.com',
           userName: 'username',
-          role: 'student'
+          role: userRole || 'student'
         });
-      } finally {
-        setLoadingUserData(false);
       }
-    };
-
-    fetchUserData();
+    } catch (error) {
+      // Set fallback data on error
+      setUserData({
+        firstName: 'User',
+        lastName: 'Name',
+        email: 'user@example.com',
+        userName: 'username',
+        role: 'student'
+      });
+    } finally {
+      setLoadingUserData(false);
+    }
   }, []);
 
-  // Fetch dynamic quiz tracking data
+  // Fetch dynamic quiz tracking data (optimized - single API call with timeout and caching)
   useEffect(() => {
+    let isMounted = true;
+    const cacheKey = 'career_quiz_data';
+    const CACHE_DURATION = 60000; // 1 minute cache
+    
     const fetchQuizData = async () => {
       try {
+        // Start loading immediately, but don't block page rendering
         setLoadingQuizData(true);
         
-        // Debug: Check if user is logged in
-        const token = localStorage.getItem('userToken');
-        console.log('🔍 Debug - User token exists:', !!token);
-        console.log('🔍 Debug - Token preview:', token ? token.substring(0, 50) + '...' : 'No token');
+        // Check cache first for faster loading
+        const cacheTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
+        const cachedData = localStorage.getItem(cacheKey);
+        const now = Date.now();
         
-        console.log('🔍 Debug - Starting API calls...');
+        // Use cached data if available and fresh (less than 1 minute old)
+        if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < CACHE_DURATION) {
+          try {
+            const parsedCache = JSON.parse(cachedData);
+            if (parsedCache && parsedCache.attempts) {
+              console.log('✅ Using cached quiz data for faster loading');
+              if (isMounted) {
+                calculateAndSetPerformanceData(parsedCache.attempts);
+                setLoadingQuizData(false);
+              }
+              // Still fetch fresh data in background but don't block UI
+              setTimeout(() => fetchFreshData(isMounted), 100);
+              return;
+            }
+          } catch (cacheError) {
+            console.warn('Cache parse error, fetching fresh data:', cacheError);
+          }
+        }
+        
         // Determine child email for parent users
         const userRole = localStorage.getItem('userRole');
         const childEmail =
@@ -102,103 +113,130 @@ const Career = () => {
             ? localStorage.getItem('childEmail')
             : null;
 
-        // Use only the working endpoint to avoid loading issues
-        const recentAttemptsRes = await getRecentQuizAttempts(10, childEmail);
+        // Reduced limit for faster API response (from 10 to 5)
+        const recentAttemptsRes = await Promise.race([
+          getRecentQuizAttempts(5, childEmail),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('API timeout')), 5000) // 5 second timeout
+          )
+        ]);
         
-        console.log('🔍 Debug - API responses received:');
-        console.log('🔍 Debug - Recent attempts data:', recentAttemptsRes);
-        
-        if (recentAttemptsRes && recentAttemptsRes.attempts) {
-          console.log('🔍 Debug - Individual attempt details:');
-          recentAttemptsRes.attempts.forEach((attempt, index) => {
-            console.log(`🔍 Debug - Attempt ${index}:`, {
-              type: attempt.type,
-              total_questions: attempt.total_questions,
-              score: attempt.score,
-              subject: attempt.subject,
-              subtopic: attempt.subtopic
-            });
-          });
-        }
+        if (!isMounted) return;
         
         // Calculate performance data from recent attempts
         if (recentAttemptsRes && recentAttemptsRes.attempts) {
           const attempts = recentAttemptsRes.attempts;
           
-          // Calculate quiz performance
-          const quizAttempts = attempts.filter(attempt => attempt.type === 'quiz');
-          const quizScores = quizAttempts.map(attempt => attempt.score || 0);
-          const quizAvg = quizScores.length > 0 ? quizScores.reduce((sum, score) => sum + score, 0) / quizScores.length : 0;
+          // Cache the data for future loads
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(recentAttemptsRes));
+            localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
+          } catch (cacheError) {
+            console.warn('Failed to cache data:', cacheError);
+          }
           
-          // Calculate total questions from quiz attempts
-          const quizTotalQuestions = quizAttempts.reduce((sum, attempt) => sum + (attempt.total_questions || 0), 0);
-          console.log('🔍 Debug - Quiz total questions calculation:', {
-            quizAttempts: quizAttempts.length,
-            individualQuestions: quizAttempts.map(a => a.total_questions),
-            totalQuestions: quizTotalQuestions
-          });
-          
-          // Calculate mock test performance
-          const mockTestAttempts = attempts.filter(attempt => attempt.type === 'mock_test');
-          const mockTestScores = mockTestAttempts.map(attempt => attempt.score || 0);
-          const mockTestAvg = mockTestScores.length > 0 ? mockTestScores.reduce((sum, score) => sum + score, 0) / mockTestScores.length : 0;
-          
-          // Calculate total questions from mock test attempts
-          const mockTestTotalQuestions = mockTestAttempts.reduce((sum, attempt) => sum + (attempt.total_questions || 0), 0);
-          console.log('🔍 Debug - Mock test total questions calculation:', {
-            mockTestAttempts: mockTestAttempts.length,
-            individualQuestions: mockTestAttempts.map(a => a.total_questions),
-            totalQuestions: mockTestTotalQuestions
-          });
-          
-          // Create performance data object
-          const performanceData = {
-            quiz_average_score: quizAvg,
-            mock_test_average_score: mockTestAvg,
-            total_quizzes_attempted: quizAttempts.length,
-            total_mock_tests_attempted: mockTestAttempts.length,
-            total_questions_answered: quizTotalQuestions,
-            mock_test_questions_answered: mockTestTotalQuestions,
-            overall_average_score: (quizAvg + mockTestAvg) / 2
-          };
-          
-          // Create statistics data object
-          const statisticsData = {
-            total_attempts: attempts.length,
-            quiz_count: quizAttempts.length,
-            mock_test_count: mockTestAttempts.length,
-            average_score: performanceData.overall_average_score
-          };
-          
-          setQuizPerformanceData(performanceData);
-          setQuizStatisticsData(statisticsData);
+          calculateAndSetPerformanceData(attempts);
+        } else {
+          setRecentQuizAttempts([]);
         }
-        
-        setRecentQuizAttempts(recentAttemptsRes?.attempts || []);
       } catch (error) {
         console.error('❌ Error fetching quiz data:', error);
-        // Fallback to static data if API fails
-        setQuizPerformanceData(null);
-        setQuizStatisticsData(null);
-        setRecentQuizAttempts([]);
+        // Don't show error to user, just use context data
+        if (isMounted) {
+          setQuizPerformanceData(null);
+          setQuizStatisticsData(null);
+          setRecentQuizAttempts([]);
+        }
       } finally {
-        setLoadingQuizData(false);
-        console.log('🔍 Debug - Loading completed, loadingQuizData set to false');
+        if (isMounted) {
+          setLoadingQuizData(false);
+        }
+      }
+    };
+    
+    // Helper function to calculate performance data (extracted for reuse)
+    const calculateAndSetPerformanceData = (attempts) => {
+      // Single pass through attempts array (more efficient)
+      let quizAttempts = [];
+      let mockTestAttempts = [];
+      let quizTotal = 0;
+      let mockTestTotal = 0;
+      let quizScoreSum = 0;
+      let mockTestScoreSum = 0;
+      
+      for (const attempt of attempts) {
+        if (attempt.type === 'quiz') {
+          quizAttempts.push(attempt);
+          quizTotal += attempt.total_questions || 0;
+          quizScoreSum += attempt.score || 0;
+        } else if (attempt.type === 'mock_test') {
+          mockTestAttempts.push(attempt);
+          mockTestTotal += attempt.total_questions || 0;
+          mockTestScoreSum += attempt.score || 0;
+        }
+      }
+      
+      const quizAvg = quizAttempts.length > 0 ? quizScoreSum / quizAttempts.length : 0;
+      const mockTestAvg = mockTestAttempts.length > 0 ? mockTestScoreSum / mockTestAttempts.length : 0;
+      
+      // Create performance data object
+      const performanceData = {
+        quiz_average_score: quizAvg,
+        mock_test_average_score: mockTestAvg,
+        total_quizzes_attempted: quizAttempts.length,
+        total_mock_tests_attempted: mockTestAttempts.length,
+        total_questions_answered: quizTotal,
+        mock_test_questions_answered: mockTestTotal,
+        overall_average_score: (quizAvg + mockTestAvg) / 2
+      };
+      
+      // Create statistics data object
+      const statisticsData = {
+        total_attempts: attempts.length,
+        quiz_count: quizAttempts.length,
+        mock_test_count: mockTestAttempts.length,
+        average_score: performanceData.overall_average_score
+      };
+      
+      setQuizPerformanceData(performanceData);
+      setQuizStatisticsData(statisticsData);
+      setRecentQuizAttempts(attempts);
+    };
+    
+    // Function to fetch fresh data in background (non-blocking)
+    const fetchFreshData = async (mounted) => {
+      try {
+        const userRole = localStorage.getItem('userRole');
+        const childEmail =
+          userRole && userRole.toLowerCase() === 'parent'
+            ? localStorage.getItem('childEmail')
+            : null;
+        
+        const recentAttemptsRes = await getRecentQuizAttempts(5, childEmail);
+        
+        if (mounted && recentAttemptsRes && recentAttemptsRes.attempts) {
+          // Update cache
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(recentAttemptsRes));
+            localStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+          } catch (cacheError) {
+            // Ignore cache errors
+          }
+          
+          // Update with fresh data
+          calculateAndSetPerformanceData(recentAttemptsRes.attempts);
+        }
+      } catch (error) {
+        // Silently fail - we already have cached/context data
+        console.warn('Background data refresh failed:', error);
       }
     };
 
+    // Start fetching (with cache check)
     fetchQuizData();
     
-    // Refetch data when window regains focus (user returns to tab)
-    const handleFocus = () => {
-      console.log('🔄 Window focused - refetching quiz data...');
-      fetchQuizData();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      isMounted = false;
     };
   }, []);
  
@@ -254,15 +292,23 @@ const Career = () => {
   };
  
  
-  const quizAverage = quizResults.totalQuestions > 0
-    ? ((quizResults.totalScore / quizResults.totalQuestions) * 100).toFixed(1)
-    : 0;
-  const mockAverage = mockTestResults.totalQuestions > 0
-    ? ((mockTestResults.totalScore / mockTestResults.totalQuestions) * 100).toFixed(1)
-    : 0;
- 
-  // Calculate dynamic metrics from API data
-  const getDynamicQuizMetrics = () => {
+  // Memoize quiz averages to avoid recalculating on every render
+  const quizAverage = useMemo(() => 
+    quizResults.totalQuestions > 0
+      ? ((quizResults.totalScore / quizResults.totalQuestions) * 100).toFixed(1)
+      : 0,
+    [quizResults.totalQuestions, quizResults.totalScore]
+  );
+  
+  const mockAverage = useMemo(() =>
+    mockTestResults.totalQuestions > 0
+      ? ((mockTestResults.totalScore / mockTestResults.totalQuestions) * 100).toFixed(1)
+      : 0,
+    [mockTestResults.totalQuestions, mockTestResults.totalScore]
+  );
+
+  // Memoize dynamic metrics to avoid recalculating on every render
+  const dynamicQuizMetrics = useMemo(() => {
     if (!quizPerformanceData) {
       return {
         totalQuizzes: quizResults.totalQuizzes || 0,
@@ -271,27 +317,14 @@ const Career = () => {
       };
     }
     
-    // Get quiz data from performance API
-    const totalQuizzes = quizPerformanceData.total_quizzes_attempted || 0;
-    const averageScore = quizPerformanceData.quiz_average_score || 0;
-    const totalQuestions = quizPerformanceData.total_questions_answered || 0;
-    
-    // Debug logging
-    console.log('🔍 Quiz Metrics Debug:', {
-      totalQuizzes,
-      averageScore,
-      totalQuestions,
-      rawData: quizPerformanceData
-    });
-    
     return {
-      totalQuizzes: totalQuizzes,
-      averageScore: averageScore,
-      totalQuestions: totalQuestions
+      totalQuizzes: quizPerformanceData.total_quizzes_attempted || 0,
+      averageScore: quizPerformanceData.quiz_average_score || 0,
+      totalQuestions: quizPerformanceData.total_questions_answered || 0
     };
-  };
+  }, [quizPerformanceData, quizResults, quizAverage]);
 
-  const getDynamicMockTestMetrics = () => {
+  const dynamicMockMetrics = useMemo(() => {
     if (!quizPerformanceData) {
       return {
         totalTests: mockTestResults.totalTests || 0,
@@ -300,30 +333,30 @@ const Career = () => {
       };
     }
     
-    // Get mock test data from performance API
-    const totalTests = quizPerformanceData.total_mock_tests_attempted || 0;
-    const averageScore = quizPerformanceData.mock_test_average_score || 0;
-    const totalQuestions = quizPerformanceData.mock_test_questions_answered || 0;
-    
-    // Debug logging
-    console.log('🔍 Mock Test Metrics Debug:', {
-      totalTests,
-      averageScore,
-      totalQuestions,
-      rawData: quizPerformanceData
-    });
-    
     return {
-      totalTests: totalTests,
-      averageScore: averageScore,
-      totalQuestions: totalQuestions
+      totalTests: quizPerformanceData.total_mock_tests_attempted || 0,
+      averageScore: quizPerformanceData.mock_test_average_score || 0,
+      totalQuestions: quizPerformanceData.mock_test_questions_answered || 0
     };
-  };
+  }, [quizPerformanceData, mockTestResults, mockAverage]);
 
-  const dynamicQuizMetrics = getDynamicQuizMetrics();
-  const dynamicMockMetrics = getDynamicMockTestMetrics();
+  // Memoize filtered attempts to avoid re-filtering on every render
+  const quizAttemptsFromRecent = useMemo(() => 
+    recentQuizAttempts.filter(attempt => attempt.type === 'quiz'),
+    [recentQuizAttempts]
+  );
+  
+  const mockTestAttemptsFromRecent = useMemo(() => 
+    recentQuizAttempts.filter(attempt => attempt.type === 'mock_test'),
+    [recentQuizAttempts]
+  );
 
-  const performanceMetrics = [
+  // Memoize quizResults.byLevel keys/values to avoid recalculating
+  const quizLevelKeys = useMemo(() => Object.keys(quizResults.byLevel || {}), [quizResults.byLevel]);
+  const quizLevelValues = useMemo(() => Object.values(quizResults.byLevel || {}), [quizResults.byLevel]);
+
+  // Memoize performance metrics array to avoid recreating on every render
+  const performanceMetrics = useMemo(() => [
     {
       id: 'academic',
       title: t('performance.academic'),
@@ -381,7 +414,7 @@ const Career = () => {
         description: t('quiz.description'),
         strengths: [
           t('quiz.strengths.0'),
-          t('quiz.strengths.1', { count: Object.keys(quizResults.byLevel).length }),
+          t('quiz.strengths.1', { count: quizLevelKeys.length }),
           t('quiz.strengths.2')
         ],
         recommendations: [
@@ -389,17 +422,13 @@ const Career = () => {
           t('quiz.recommendations.1'),
           t('quiz.recommendations.2')
         ],
-        history: recentQuizAttempts.length > 0 ? recentQuizAttempts : safeGetQuizHistory(), // Dynamic history from API or context
+        history: quizAttemptsFromRecent.length > 0 ? quizAttemptsFromRecent : safeGetQuizHistory(),
         chartData: {
-          labels: Object.keys(quizResults.byLevel).length > 0
-            ? Object.keys(quizResults.byLevel)
-            : [t('quiz.chart.noData') || 'No Data'],
+          labels: quizLevelKeys.length > 0 ? quizLevelKeys : [t('quiz.chart.noData') || 'No Data'],
           datasets: [
             {
               label: t('quiz.chart.label'),
-              data: Object.keys(quizResults.byLevel).length > 0
-                ? Object.values(quizResults.byLevel)
-                : [0],
+              data: quizLevelKeys.length > 0 ? quizLevelValues : [0],
               backgroundColor: 'rgba(102, 126, 234, 0.6)'
             }
           ]
@@ -427,9 +456,7 @@ const Career = () => {
           t('mock.recommendations.1'),
           t('mock.recommendations.2')
         ],
-        history: recentQuizAttempts.filter(attempt => attempt.type === 'mock_test').length > 0 
-          ? recentQuizAttempts.filter(attempt => attempt.type === 'mock_test') 
-          : safeGetMockHistory(), // Dynamic history from API or context
+        history: mockTestAttemptsFromRecent.length > 0 ? mockTestAttemptsFromRecent : safeGetMockHistory(),
         chartData: {
           labels: [t('mock.chart.label')],
           datasets: [
@@ -442,7 +469,7 @@ const Career = () => {
         }
       }
     }
-  ];
+  ], [t, dynamicQuizMetrics, dynamicMockMetrics, quizLevelKeys, quizLevelValues, quizAttemptsFromRecent, mockTestAttemptsFromRecent, safeGetQuizHistory, safeGetMockHistory, mockAverage]);
  
   // Compute translations safely before assigning to studentDetails
   const interestsList = t('profile.interestsList', { returnObjects: true });
@@ -477,31 +504,20 @@ const Career = () => {
     document.body.style.overflow = 'auto';
   };
 
-  // Get history for current category
-  const getHistory = () => {
+  // Memoize history getter to avoid re-filtering
+  const getHistory = useCallback(() => {
     if (!showDetails) return [];
     if (showDetails.id === 'quiz') {
-      const quizAttempts = recentQuizAttempts.filter(attempt => attempt.type === 'quiz');
-      return quizAttempts.length > 0 ? quizAttempts : safeGetQuizHistory();
+      return quizAttemptsFromRecent.length > 0 ? quizAttemptsFromRecent : safeGetQuizHistory();
     }
     if (showDetails.id === 'mock') {
-      const mockAttempts = recentQuizAttempts.filter(attempt => attempt.type === 'mock_test');
-      return mockAttempts.length > 0 ? mockAttempts : safeGetMockHistory();
+      return mockTestAttemptsFromRecent.length > 0 ? mockTestAttemptsFromRecent : safeGetMockHistory();
     }
     return [];
-  };
+  }, [showDetails, quizAttemptsFromRecent, mockTestAttemptsFromRecent, safeGetQuizHistory, safeGetMockHistory]);
  
-  // Check if context is available after all hooks are called
-  if (!quizContext) {
-    return (
-      <div className="career-container">
-        <Navbar isFullScreen={false} />
-        <div className="loading-message">
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  // Don't block rendering - show page immediately with context fallbacks
+  // Context will be available or we use fallback values
 
   return (
     <div className="career-container">
@@ -612,12 +628,8 @@ const Career = () => {
         </p>
        
         <div className="metrics-grid">
-          {loadingQuizData ? (
-            <div className="loading-message">
-              <p>Loading performance data...</p>
-            </div>
-          ) : (
-            performanceMetrics.map((category) => (
+          {/* Show content immediately - use context data while API loads */}
+          {performanceMetrics.map((category) => (
             <div key={category.id} className="metric-card">
               <div className="metric-header">
                 <div className="metric-icon">
@@ -663,7 +675,18 @@ const Career = () => {
                 <ArrowUpRight size={16} />
               </button>
             </div>
-            ))
+          ))}
+          {/* Show subtle loading indicator only if still loading (non-blocking) */}
+          {loadingQuizData && (
+            <div style={{ 
+              gridColumn: '1 / -1', 
+              textAlign: 'center', 
+              padding: '10px',
+              color: '#666',
+              fontSize: '14px'
+            }}>
+              Refreshing performance data...
+            </div>
           )}
         </div>
       </section>

@@ -8,13 +8,15 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils.crypto import get_random_string
 from django.utils import timezone
+from django.db import transaction
 from datetime import datetime, timedelta
 import uuid
 
 from .models import (
     User, Student, Parent, PasswordResetToken,
     ParentRegistration, StudentRegistration, ParentStudentMapping, StudentProfile,
-    CoinTransaction, UserCoinBalance, StudentFeedback
+    CoinTransaction, UserCoinBalance, StudentFeedback,
+    UserBadge, UserStreak, DailyActivity, LeaderboardEntry
 )
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserLoginSerializer,
@@ -24,8 +26,176 @@ from .serializers import (
     ParentStudentMappingSerializer, StudentProfileSerializer,
     ParentRegistrationCreateSerializer, StudentRegistrationCreateSerializer,
     CoinTransactionSerializer, AddCoinTransactionSerializer, UserCoinBalanceSerializer,
-    StudentFeedbackSerializer, StudentFeedbackCreateSerializer
+    StudentFeedbackSerializer, StudentFeedbackCreateSerializer,
+    UserBadgeSerializer, UserStreakSerializer, DailyActivitySerializer, LeaderboardEntrySerializer
 )
+
+
+def get_student_from_request(request):
+    """
+    Helper function to get StudentRegistration from authenticated request
+    """
+    try:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return None
+        
+        # Try to get student registration by username
+        try:
+            student = StudentRegistration.objects.get(student_username=user.username)
+            return student
+        except StudentRegistration.DoesNotExist:
+            # Try to get by email
+            try:
+                student = StudentRegistration.objects.get(student_email=user.email)
+                return student
+            except StudentRegistration.DoesNotExist:
+                return None
+    except Exception as e:
+        print(f"Error in get_student_from_request: {str(e)}")
+        return None
+
+
+def update_streak_for_student(student):
+    """
+    Helper function to update streak for a student (called during login)
+    Uses direct SQL to ensure persistence
+    """
+    try:
+        if not student:
+            print(f"❌ update_streak_for_student: student is None")
+            return None
+        
+        from django.db import connection
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
+        
+        print(f"🔍 Updating streak for student {student.student_username} (ID: {student.student_id}) on {today}")
+        
+        # Use direct SQL to get or create and update streak
+        with connection.cursor() as cursor:
+            # First, check if streak exists
+            cursor.execute("""
+                SELECT streak_id, current_streak, longest_streak, last_activity_date, 
+                       total_days_active, streak_started_at
+                FROM user_streak 
+                WHERE student_id = %s
+            """, [student.student_id])
+            
+            row = cursor.fetchone()
+            
+            if not row:
+                # Create new streak - use direct SQL INSERT
+                print(f"🆕 Creating NEW streak record for {student.student_username}")
+                cursor.execute("""
+                    INSERT INTO user_streak 
+                    (student_id, current_streak, longest_streak, last_activity_date, 
+                     total_days_active, streak_started_at, updated_at)
+                    VALUES (%s, 1, 1, %s, 1, %s, CURRENT_TIMESTAMP)
+                    RETURNING streak_id
+                """, [student.student_id, today, today])
+                
+                streak_id = cursor.fetchone()[0]
+                new_current_streak = 1
+                print(f"✅ Created new streak: streak_id={streak_id}, current_streak=1")
+                
+            else:
+                streak_id, current_streak, longest_streak, last_activity_date, total_days_active, streak_started_at = row
+                
+                print(f"📊 Found EXISTING streak: streak_id={streak_id}, current_streak={current_streak}, last_activity={last_activity_date}")
+                
+                needs_update = True
+                
+                # Determine new streak value
+                if last_activity_date is None:
+                    # First time login - initialize to 1
+                    print(f"⚠️ First login detected (last_activity_date is NULL), initializing to 1")
+                    new_current_streak = 1
+                    new_longest_streak = max(1, longest_streak or 0)
+                    new_total_days = max(1, total_days_active or 0)
+                    new_started_at = today
+                    
+                elif last_activity_date == today:
+                    # Already logged in today - keep current streak (but fix if 0)
+                    print(f"ℹ️ Already logged in today (current_streak={current_streak})")
+                    if current_streak == 0:
+                        new_current_streak = 1
+                        new_longest_streak = max(1, longest_streak or 0)
+                        new_total_days = max(1, total_days_active or 0)
+                        new_started_at = today if streak_started_at is None else streak_started_at
+                        print(f"⚠️ Fixed zero streak to 1")
+                    else:
+                        # No change needed - skip update
+                        needs_update = False
+                        print(f"✅ Streak unchanged: {current_streak} days (already logged in today)")
+                        
+                elif last_activity_date == yesterday:
+                    # Consecutive day - increment
+                    new_current_streak = (current_streak or 0) + 1
+                    new_longest_streak = max(new_current_streak, longest_streak or 0)
+                    new_total_days = (total_days_active or 0) + 1
+                    new_started_at = streak_started_at or yesterday
+                    print(f"🔥 Consecutive day: incrementing streak from {current_streak} to {new_current_streak}")
+                    
+                else:
+                    # Streak broken - reset to 1
+                    new_current_streak = 1
+                    new_longest_streak = max(1, longest_streak or 0)
+                    new_total_days = (total_days_active or 0) + 1
+                    new_started_at = today
+                    print(f"🔥 Streak broken (last: {last_activity_date}), resetting to 1")
+                
+                # Update using direct SQL if needed
+                if needs_update:
+                    cursor.execute("""
+                        UPDATE user_streak 
+                        SET current_streak = %s,
+                            longest_streak = %s,
+                            last_activity_date = %s,
+                            total_days_active = %s,
+                            streak_started_at = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE streak_id = %s
+                    """, [new_current_streak, new_longest_streak, today, new_total_days, new_started_at, streak_id])
+                    
+                    print(f"✅ Updated streak via SQL: streak_id={streak_id}, current_streak={new_current_streak}, last_activity={today}")
+        
+        # Verify and return the updated streak
+        try:
+            streak = UserStreak.objects.get(streak_id=streak_id)
+            print(f"✅ Verified streak after update: streak_id={streak.streak_id}, current_streak={streak.current_streak}, last_activity={streak.last_activity_date}")
+            
+            # Award milestone badges if needed
+            milestones = {7: 'streak_7', 15: 'streak_15', 30: 'streak_30'}
+            for days, badge_type in milestones.items():
+                if streak.current_streak == days:
+                    badge_titles = {
+                        'streak_7': 'Steady Learner',
+                        'streak_15': 'Focused Mind',
+                        'streak_30': 'Learning Legend'
+                    }
+                    badge, badge_created = UserBadge.objects.get_or_create(
+                        student_id=student,
+                        badge_type=badge_type,
+                        defaults={
+                            'badge_title': badge_titles[badge_type],
+                            'badge_description': f'Awarded for {days} day streak',
+                            'is_active': True
+                        }
+                    )
+                    if badge_created:
+                        print(f"🏆 Badge awarded: {badge_titles[badge_type]} to {student.student_username}")
+            
+            return streak
+        except UserStreak.DoesNotExist:
+            print(f"❌ ERROR: Streak record not found after update! streak_id={streak_id}")
+            return None
+        
+    except Exception as e:
+        print(f"❌ Error updating streak for student {student.student_username if student else 'Unknown'}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -33,15 +203,19 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     Custom JWT token view that includes user data in response
     """
     def post(self, request, *args, **kwargs):
+        print(f"🔍 LOGIN ATTEMPT: username={request.data.get('username')}")
         response = super().post(request, *args, **kwargs)
+        print(f"🔍 LOGIN RESPONSE STATUS: {response.status_code}")
         if response.status_code == 200:
             # Get user data
             username = request.data.get('username')
+            print(f"🔍 LOGIN SUCCESS: Fetching user {username}")
             user = User.objects.get(username=username)
             user_data = UserSerializer(user).data
             
             # Add user data to response
             response.data['user'] = user_data
+            print(f"🔍 User data added: role={user.role}, email={user.email}")
             
             # Add role-specific data (optional - don't fail if profile doesn't exist)
             try:
@@ -52,6 +226,59 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             except Exception as e:
                 # Profile doesn't exist yet - that's okay for now
                 pass
+            
+            # Update streak for students on login
+            print(f"🔍 Login: user.role = '{user.role}', username = '{user.username}'")
+            if user.role == 'Student':
+                try:
+                    print(f"🔍 Attempting to update streak for student: {user.username}")
+                    # Get student registration by username (request.user not authenticated yet)
+                    try:
+                        student = StudentRegistration.objects.get(student_username=user.username)
+                        print(f"✅ Found StudentRegistration by username: {student.student_id}")
+                    except StudentRegistration.DoesNotExist:
+                        # Try by email
+                        try:
+                            student = StudentRegistration.objects.get(student_email=user.email)
+                            print(f"✅ Found StudentRegistration by email: {student.student_id}")
+                        except StudentRegistration.DoesNotExist:
+                            print(f"❌ StudentRegistration not found for username: {user.username} or email: {user.email}")
+                            # List all students to debug
+                            all_students = StudentRegistration.objects.all()[:5]
+                            print(f"📋 Available students (first 5): {[(s.student_id, s.student_username, s.student_email) for s in all_students]}")
+                            student = None
+                    
+                    if student:
+                        print(f"🔍 Calling update_streak_for_student for student_id: {student.student_id}")
+                        try:
+                            streak = update_streak_for_student(student)
+                            if streak:
+                                try:
+                                    # Add streak data to response
+                                    streak_serializer = UserStreakSerializer(streak)
+                                    response.data['streak'] = streak_serializer.data
+                                    print(f"✅ Streak updated on login for {user.username}: {streak.current_streak} days")
+                                    print(f"✅ Streak data in response: {response.data.get('streak', 'NOT IN RESPONSE')}")
+                                except Exception as ser_error:
+                                    print(f"❌ ERROR serializing streak: {ser_error}")
+                                    import traceback
+                                    traceback.print_exc()
+                            else:
+                                print(f"⚠️ update_streak_for_student returned None for {user.username}")
+                        except Exception as streak_error:
+                            print(f"❌ ERROR in update_streak_for_student: {streak_error}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"⚠️ Student is None, cannot update streak for {user.username}")
+                except Exception as e:
+                    print(f"❌ Error: Could not update streak on login for {user.username}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    # Don't fail login if streak update fails
+                    pass
+            else:
+                print(f"ℹ️ User role is '{user.role}', not 'Student', skipping streak update")
         
         return response
 
@@ -1723,6 +1950,15 @@ def add_coin_transaction(request):
         
         print(f"✅ Transaction created: transaction_id={transaction.transaction_id}, balance_after={transaction.balance_after}")
         
+        # Update DailyActivity if coins were earned (only for earned transactions)
+        if transaction_type == 'earned':
+            try:
+                update_daily_activity(student, timezone.now().date())
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to update DailyActivity after coin transaction: {e}")
+                import traceback
+                traceback.print_exc()
+        
         return Response({
             'message': f'Successfully {transaction_type} {coins_absolute} coins',
             'transaction': CoinTransactionSerializer(transaction).data,
@@ -2048,3 +2284,723 @@ def check_video_watching_reward(request):
         return Response({
             'error': f'Failed to check video watching reward: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =====================================================
+# BADGES API ENDPOINTS
+# =====================================================
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_badges(request):
+    """
+    Get all badges for the authenticated student
+    """
+    try:
+        student = get_student_from_request(request)
+        if not student:
+            return Response({
+                'error': 'Student profile not found. Please ensure you are logged in as a student.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        badges = UserBadge.objects.filter(student_id=student, is_active=True).order_by('-earned_at')
+        serializer = UserBadgeSerializer(badges, many=True)
+        
+        return Response({
+            'badges': serializer.data,
+            'total_badges': badges.count()
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to get badges: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def award_badge(request):
+    """
+    Award a badge to a student (internal use - called by other services)
+    """
+    try:
+        student = get_student_from_request(request)
+        if not student:
+            return Response({
+                'error': 'Student profile not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        badge_type = request.data.get('badge_type')
+        if not badge_type:
+            return Response({
+                'error': 'badge_type is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Badge titles mapping
+        badge_titles = {
+            'quick_master': 'Quick Master',
+            'mock_master': 'Mock Master',
+            'streak_7': 'Steady Learner',
+            'streak_15': 'Focused Mind',
+            'streak_30': 'Learning Legend'
+        }
+        
+        badge_title = badge_titles.get(badge_type, badge_type.replace('_', ' ').title())
+        
+        # Check if badge already exists
+        badge, created = UserBadge.objects.get_or_create(
+            student_id=student,
+            badge_type=badge_type,
+            defaults={
+                'badge_title': badge_title,
+                'badge_description': f'Awarded for achieving {badge_title}',
+                'is_active': True
+            }
+        )
+        
+        print(f"🏆 Badge award attempt for {student.student_username}: {badge_type} - Created: {created}")
+        
+        if not created:
+            print(f"ℹ️ Badge already exists for {student.student_username}: {badge_type}")
+            return Response({
+                'message': 'Badge already exists',
+                'badge': UserBadgeSerializer(badge).data
+            }, status=status.HTTP_200_OK)
+        
+        serializer = UserBadgeSerializer(badge)
+        print(f"✅ Badge awarded successfully to {student.student_username}: {badge_title}")
+        return Response({
+            'message': 'Badge awarded successfully',
+            'badge': serializer.data
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to award badge: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =====================================================
+# STREAKS API ENDPOINTS
+# =====================================================
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_streak(request):
+    """
+    Get streak information for the authenticated student
+    """
+    try:
+        student = get_student_from_request(request)
+        if not student:
+            return Response({
+                'error': 'Student profile not found. Please ensure you are logged in as a student.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        streak, created = UserStreak.objects.get_or_create(
+            student_id=student,
+            defaults={
+                'current_streak': 0,
+                'longest_streak': 0,
+                'total_days_active': 0
+            }
+        )
+        
+        serializer = UserStreakSerializer(streak)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to get streak: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def update_streak(request):
+    """
+    Update streak for a student (called when activity is detected)
+    """
+    try:
+        student = get_student_from_request(request)
+        if not student:
+            return Response({
+                'error': 'Student profile not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Use the helper function to update streak
+        streak = update_streak_for_student(student)
+        
+        if not streak:
+            return Response({
+                'error': 'Failed to update streak'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+            serializer = UserStreakSerializer(streak)
+            return Response({
+            'message': 'Streak updated successfully',
+                'streak': serializer.data
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to update streak: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =====================================================
+# DAILY SUMMARY API ENDPOINTS
+# =====================================================
+
+def update_daily_activity(student, activity_date=None):
+    """
+    Helper function to update or create DailyActivity record for a student on a specific date
+    Called automatically when quizzes, mock tests, or coin transactions occur
+    """
+    from quizzes.models import QuizAttempt, MockTestAttempt
+    from django.db.models import Sum
+    from django.utils import timezone as tz
+    
+    if activity_date is None:
+        activity_date = timezone.now().date()
+    
+    try:
+        # Get or create daily activity
+        daily_activity, created = DailyActivity.objects.get_or_create(
+                    student_id=student,
+            activity_date=activity_date,
+                    defaults={
+                'quizzes_completed': 0,
+                'mock_tests_completed': 0,
+                'quick_practices_completed': 0,
+                'classroom_activities': 0,
+                'total_study_time_minutes': 0,
+                'average_quiz_score': 0.0,
+                'average_mock_test_score': 0.0,
+                'coins_earned': 0
+            }
+        )
+        
+        # Calculate date range for the day
+        start_of_day = tz.make_aware(datetime.combine(activity_date, datetime.min.time()))
+        end_of_day = tz.make_aware(datetime.combine(activity_date, datetime.max.time()))
+        
+        # Get quiz attempts for the day
+        quiz_attempts = QuizAttempt.objects.filter(
+            student_id=student,
+            attempted_at__gte=start_of_day,
+            attempted_at__lte=end_of_day
+        )
+        
+        # Get mock test attempts for the day
+        mock_test_attempts = MockTestAttempt.objects.filter(
+            student_id=student,
+            attempted_at__gte=start_of_day,
+            attempted_at__lte=end_of_day
+        )
+        
+        # Count by quiz_type
+        ai_generated_count = quiz_attempts.filter(quiz_type='ai_generated').count()
+        database_count = quiz_attempts.filter(quiz_type='database').count()
+        quiz_type_count = quiz_attempts.filter(quiz_type='quiz').count()  # Legacy 'quiz' type
+        
+        # Update counts
+        daily_activity.quizzes_completed = ai_generated_count
+        daily_activity.quick_practices_completed = database_count + quiz_type_count
+        daily_activity.mock_tests_completed = mock_test_attempts.count()
+        
+        # Calculate average scores
+        quiz_scores = [q.score for q in quiz_attempts if q.score is not None]
+        mock_scores = [m.score for m in mock_test_attempts if m.score is not None]
+        
+        daily_activity.average_quiz_score = sum(quiz_scores) / len(quiz_scores) if quiz_scores else 0.0
+        daily_activity.average_mock_test_score = sum(mock_scores) / len(mock_scores) if mock_scores else 0.0
+        
+        # Calculate total study time (sum of time_taken_seconds from attempts)
+        total_quiz_time = quiz_attempts.aggregate(total=Sum('time_taken_seconds'))['total'] or 0
+        total_mock_time = mock_test_attempts.aggregate(total=Sum('time_taken_seconds'))['total'] or 0
+        daily_activity.total_study_time_minutes = int((total_quiz_time + total_mock_time) / 60)
+        
+        # Get coins earned for the day
+        coins_earned = CoinTransaction.objects.filter(
+            student_id=student,
+            transaction_type='earned',
+            created_at__gte=start_of_day,
+            created_at__lte=end_of_day
+        ).aggregate(total=Sum('coins'))['total'] or 0
+        
+        daily_activity.coins_earned = coins_earned
+        
+        # Save the updated activity
+        daily_activity.save()
+        
+        print(f"✅ DailyActivity updated for {student.student_username} on {activity_date}: "
+              f"quizzes={daily_activity.quizzes_completed}, "
+              f"quick_practices={daily_activity.quick_practices_completed}, "
+              f"mock_tests={daily_activity.mock_tests_completed}, "
+              f"coins={daily_activity.coins_earned}")
+        
+        return daily_activity
+        
+    except Exception as e:
+        print(f"❌ Error updating DailyActivity: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_daily_summary(request):
+    """
+    Get daily summary for a specific date or today
+    """
+    try:
+        student = get_student_from_request(request)
+        if not student:
+            return Response({
+                'error': 'Student profile not found. Please ensure you are logged in as a student.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get date from query params or use today
+        date_str = request.query_params.get('date')
+        if date_str:
+            try:
+                activity_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({
+                    'error': 'Invalid date format. Use YYYY-MM-DD'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            activity_date = timezone.now().date()
+        
+        # Get or create daily activity
+        daily_activity, created = DailyActivity.objects.get_or_create(
+            student_id=student,
+            activity_date=activity_date,
+            defaults={
+                'quizzes_completed': 0,
+                'mock_tests_completed': 0,
+                'quick_practices_completed': 0,
+                'classroom_activities': 0,
+                'total_study_time_minutes': 0,
+                'average_quiz_score': 0.0,
+                'average_mock_test_score': 0.0,
+                'coins_earned': 0
+            }
+        )
+        
+        # ALWAYS recalculate from actual data (both for new and existing records)
+        from quizzes.models import QuizAttempt, MockTestAttempt
+        from django.db.models import Sum
+        from django.utils import timezone as tz
+        
+        # Get quiz attempts for the day (handle timezone properly)
+        # Use date range to ensure we catch all attempts for the day
+        start_of_day = tz.make_aware(datetime.combine(activity_date, datetime.min.time()))
+        end_of_day = tz.make_aware(datetime.combine(activity_date, datetime.max.time()))
+        
+        quiz_attempts = QuizAttempt.objects.filter(
+            student_id=student,
+            attempted_at__gte=start_of_day,
+            attempted_at__lte=end_of_day
+        )
+        
+        # Get mock test attempts for the day
+        mock_test_attempts = MockTestAttempt.objects.filter(
+            student_id=student,
+            attempted_at__gte=start_of_day,
+            attempted_at__lte=end_of_day
+        )
+        
+        # Debug logging
+        print(f"📊 Daily Summary Calculation for {student.student_username} on {activity_date}:")
+        print(f"   Quiz attempts found: {quiz_attempts.count()}")
+        print(f"   Mock test attempts found: {mock_test_attempts.count()}")
+        
+        # Count by quiz_type (handle all possible types)
+        ai_generated_count = quiz_attempts.filter(quiz_type='ai_generated').count()
+        database_count = quiz_attempts.filter(quiz_type='database').count()
+        quiz_type_count = quiz_attempts.filter(quiz_type='quiz').count()  # Legacy 'quiz' type
+        
+        print(f"   AI Generated quizzes: {ai_generated_count}")
+        print(f"   Database quizzes: {database_count}")
+        print(f"   Legacy 'quiz' type: {quiz_type_count}")
+        
+        # Update counts (combine database and legacy 'quiz' types for quick practices)
+        daily_activity.quizzes_completed = ai_generated_count
+        daily_activity.quick_practices_completed = database_count + quiz_type_count  # Include legacy 'quiz' type
+        daily_activity.mock_tests_completed = mock_test_attempts.count()
+        
+        # Calculate average scores
+        quiz_scores = [q.score for q in quiz_attempts if q.score is not None]
+        mock_scores = [m.score for m in mock_test_attempts if m.score is not None]
+        
+        daily_activity.average_quiz_score = sum(quiz_scores) / len(quiz_scores) if quiz_scores else 0.0
+        daily_activity.average_mock_test_score = sum(mock_scores) / len(mock_scores) if mock_scores else 0.0
+        
+        # Get coins earned for the day (handle timezone properly)
+        coins_earned = CoinTransaction.objects.filter(
+            student_id=student,
+            transaction_type='earned',
+            created_at__gte=start_of_day,
+            created_at__lte=end_of_day
+        ).aggregate(total=Sum('coins'))['total'] or 0
+        
+        print(f"   Coins earned: {coins_earned}")
+        
+        daily_activity.coins_earned = coins_earned
+        
+        # Save the updated activity
+        daily_activity.save()
+        
+        serializer = DailyActivitySerializer(daily_activity)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to get daily summary: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =====================================================
+# LEADERBOARD API ENDPOINTS
+# =====================================================
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_leaderboard(request):
+    """
+    Get leaderboard based on ranking type with subject-wise scores
+    """
+    try:
+        from quizzes.models import QuizAttempt, MockTestAttempt
+        import json
+        
+        ranking_type = request.query_params.get('type', 'overall')
+        limit = int(request.query_params.get('limit', 100))
+        
+        # Subject mapping - normalize subject names from database to leaderboard format
+        SUBJECT_MAPPING = {
+            'english': ['english', 'English', 'ENGLISH'],
+            'maths': ['maths', 'Mathematics', 'Math', 'MATH', 'MATHS', 'Mathematics'],
+            'science': ['science', 'Science', 'SCIENCE'],
+            'social': ['social', 'Social', 'Social Studies', 'SOCIAL', 'Social Studies'],
+            'computer': ['computer', 'Computer', 'Computers', 'COMPUTER', 'COMPUTERS']
+        }
+        
+        def normalize_subject(subject_name):
+            """Normalize subject name to leaderboard format"""
+            if not subject_name:
+                return None
+            subject_lower = subject_name.strip().lower()
+            for key, variants in SUBJECT_MAPPING.items():
+                if subject_lower in [v.lower() for v in variants]:
+                    return key
+            return None
+        
+        # Calculate leaderboard (this will populate entries)
+        calculate_leaderboard(ranking_type)
+        
+        # Get leaderboard entries
+        entries = LeaderboardEntry.objects.filter(ranking_type=ranking_type).order_by('rank')[:limit]
+        
+        # Calculate subject scores for each entry on-the-fly
+        leaderboard_with_scores = []
+        for entry in entries:
+            student = entry.student_id
+            
+            # Get quiz and mock test attempts
+            quiz_attempts = QuizAttempt.objects.filter(student_id=student)
+            mock_attempts = MockTestAttempt.objects.filter(student_id=student)
+            
+            # Calculate subject-wise scores using Simple Average (Option 1)
+            subject_scores = {
+                'english': 0.0,
+                'maths': 0.0,
+                'science': 0.0,
+                'social': 0.0,
+                'computer': 0.0
+            }
+            
+            for subject_key in subject_scores.keys():
+                # Get quiz attempts for this subject
+                quiz_scores_for_subject = []
+                for q in quiz_attempts:
+                    if q.score is not None and q.subject:
+                        normalized = normalize_subject(q.subject)
+                        if normalized == subject_key:
+                            quiz_scores_for_subject.append(q.score)
+                
+                # Get mock test attempts for this subject
+                mock_scores_for_subject = []
+                for m in mock_attempts:
+                    if m.score is not None and m.subject:
+                        normalized = normalize_subject(m.subject)
+                        if normalized == subject_key:
+                            mock_scores_for_subject.append(m.score)
+                
+                # Calculate averages
+                quiz_avg = sum(quiz_scores_for_subject) / len(quiz_scores_for_subject) if quiz_scores_for_subject else 0.0
+                mock_avg = sum(mock_scores_for_subject) / len(mock_scores_for_subject) if mock_scores_for_subject else 0.0
+                
+                # Apply Simple Average (Option 1): (Quiz_Avg + Mock_Avg) / 2
+                if quiz_avg > 0 and mock_avg > 0:
+                    subject_scores[subject_key] = round((quiz_avg + mock_avg) / 2, 2)
+                elif quiz_avg > 0:
+                    subject_scores[subject_key] = round(quiz_avg, 2)
+                elif mock_avg > 0:
+                    subject_scores[subject_key] = round(mock_avg, 2)
+                else:
+                    subject_scores[subject_key] = 0.0  # No attempts = 0
+            
+            # Calculate total score (sum of all subject scores)
+            total_score = round(sum(subject_scores.values()), 2)
+            
+            # Serialize entry
+            serializer = LeaderboardEntrySerializer(entry)
+            entry_data = serializer.data
+            
+            # Add subject scores and total score to entry data
+            entry_data['subject_scores'] = subject_scores
+            entry_data['total_score'] = total_score
+            
+            leaderboard_with_scores.append(entry_data)
+        
+        # Get current user's rank if authenticated
+        current_user_rank = None
+        try:
+            student = get_student_from_request(request)
+            if student:
+                user_entry = LeaderboardEntry.objects.filter(
+                    student_id=student,
+                    ranking_type=ranking_type
+                ).first()
+                if user_entry:
+                    # Calculate subject scores for current user
+                    quiz_attempts = QuizAttempt.objects.filter(student_id=student)
+                    mock_attempts = MockTestAttempt.objects.filter(student_id=student)
+                    
+                    user_subject_scores = {
+                        'english': 0.0,
+                        'maths': 0.0,
+                        'science': 0.0,
+                        'social': 0.0,
+                        'computer': 0.0
+                    }
+                    
+                    for subject_key in user_subject_scores.keys():
+                        quiz_scores = [q.score for q in quiz_attempts if q.score is not None and q.subject and normalize_subject(q.subject) == subject_key]
+                        mock_scores = [m.score for m in mock_attempts if m.score is not None and m.subject and normalize_subject(m.subject) == subject_key]
+                        
+                        quiz_avg = sum(quiz_scores) / len(quiz_scores) if quiz_scores else 0.0
+                        mock_avg = sum(mock_scores) / len(mock_scores) if mock_scores else 0.0
+                        
+                        if quiz_avg > 0 and mock_avg > 0:
+                            user_subject_scores[subject_key] = round((quiz_avg + mock_avg) / 2, 2)
+                        elif quiz_avg > 0:
+                            user_subject_scores[subject_key] = round(quiz_avg, 2)
+                        elif mock_avg > 0:
+                            user_subject_scores[subject_key] = round(mock_avg, 2)
+                        else:
+                            user_subject_scores[subject_key] = 0.0
+                    
+                    user_total_score = round(sum(user_subject_scores.values()), 2)
+                    
+                    current_user_rank = {
+                        'rank': user_entry.rank,
+                        'score': user_entry.score,
+                        'total_score': user_total_score,
+                        'subject_scores': user_subject_scores,
+                        'total_quizzes': user_entry.total_quizzes,
+                        'total_mock_tests': user_entry.total_mock_tests,
+                        'average_score': user_entry.average_score,
+                        'total_coins': user_entry.total_coins,
+                        'current_streak': user_entry.current_streak
+                    }
+        except Exception as e:
+            print(f"Error getting current user rank: {e}")
+            pass
+        
+        return Response({
+            'leaderboard': leaderboard_with_scores,
+            'ranking_type': ranking_type,
+            'current_user_rank': current_user_rank,
+            'total_entries': len(leaderboard_with_scores)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error in get_leaderboard: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get leaderboard: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def calculate_leaderboard(ranking_type='overall'):
+    """
+    Calculate and update leaderboard entries with subject-wise scores using Simple Average (Option 1)
+    Merges quiz and mock test scores: (Quiz_Avg + Mock_Avg) / 2 for each subject
+    """
+    from django.db.models import Avg, Count, Sum, Q
+    from quizzes.models import QuizAttempt, MockTestAttempt
+    import json
+    
+    print(f"📊 Calculating leaderboard for type: {ranking_type}")
+    
+    # Subject mapping - normalize subject names from database to leaderboard format
+    SUBJECT_MAPPING = {
+        'english': ['english', 'English', 'ENGLISH'],
+        'maths': ['maths', 'Mathematics', 'Math', 'MATH', 'MATHS', 'Mathematics'],
+        'science': ['science', 'Science', 'SCIENCE'],
+        'social': ['social', 'Social', 'Social Studies', 'SOCIAL', 'Social Studies'],
+        'computer': ['computer', 'Computer', 'Computers', 'COMPUTER', 'COMPUTERS']
+    }
+    
+    def normalize_subject(subject_name):
+        """Normalize subject name to leaderboard format"""
+        if not subject_name:
+            return None
+        subject_lower = subject_name.strip().lower()
+        for key, variants in SUBJECT_MAPPING.items():
+            if subject_lower in [v.lower() for v in variants]:
+                return key
+        return None
+    
+    # Get all students
+    students = StudentRegistration.objects.all()
+    print(f"   Found {students.count()} students")
+    
+    leaderboard_data = []
+    
+    for student in students:
+        # Get quiz and mock test attempts
+        quiz_attempts = QuizAttempt.objects.filter(student_id=student)
+        mock_attempts = MockTestAttempt.objects.filter(student_id=student)
+        
+        # Get coin balance
+        try:
+            coin_balance = UserCoinBalance.objects.get(student_id=student)
+            total_coins = coin_balance.total_coins
+        except UserCoinBalance.DoesNotExist:
+            total_coins = 0
+        
+        # Get streak
+        try:
+            streak = UserStreak.objects.get(student_id=student)
+            current_streak = streak.current_streak
+        except UserStreak.DoesNotExist:
+            current_streak = 0
+        
+        # Calculate metrics
+        total_quizzes = quiz_attempts.count()
+        total_mock_tests = mock_attempts.count()
+        
+        all_scores = []
+        for q in quiz_attempts:
+            if q.score is not None:
+                all_scores.append(q.score)
+        for m in mock_attempts:
+            if m.score is not None:
+                all_scores.append(m.score)
+        
+        average_score = sum(all_scores) / len(all_scores) if all_scores else 0.0
+        
+        # NEW: Calculate subject-wise scores using Simple Average (Option 1)
+        # Initialize subject scores
+        subject_scores = {
+            'english': 0.0,
+            'maths': 0.0,
+            'science': 0.0,
+            'social': 0.0,
+            'computer': 0.0
+        }
+        
+        # Calculate scores for each subject
+        for subject_key in subject_scores.keys():
+            # Get quiz attempts for this subject
+            quiz_scores_for_subject = []
+            for q in quiz_attempts:
+                if q.score is not None and q.subject:
+                    normalized = normalize_subject(q.subject)
+                    if normalized == subject_key:
+                        quiz_scores_for_subject.append(q.score)
+            
+            # Get mock test attempts for this subject
+            mock_scores_for_subject = []
+            for m in mock_attempts:
+                if m.score is not None and m.subject:
+                    normalized = normalize_subject(m.subject)
+                    if normalized == subject_key:
+                        mock_scores_for_subject.append(m.score)
+            
+            # Calculate averages
+            quiz_avg = sum(quiz_scores_for_subject) / len(quiz_scores_for_subject) if quiz_scores_for_subject else 0.0
+            mock_avg = sum(mock_scores_for_subject) / len(mock_scores_for_subject) if mock_scores_for_subject else 0.0
+            
+            # Apply Simple Average (Option 1): (Quiz_Avg + Mock_Avg) / 2
+            if quiz_avg > 0 and mock_avg > 0:
+                subject_scores[subject_key] = (quiz_avg + mock_avg) / 2
+            elif quiz_avg > 0:
+                subject_scores[subject_key] = quiz_avg
+            elif mock_avg > 0:
+                subject_scores[subject_key] = mock_avg
+            else:
+                subject_scores[subject_key] = 0.0  # No attempts = 0
+        
+        # Calculate total score (sum of all subject scores)
+        total_score = sum(subject_scores.values())
+        
+        # Calculate score for ranking (weighted combination)
+        ranking_score = (
+            (total_quizzes * 10) +
+            (total_mock_tests * 20) +
+            (average_score * 2) +
+            (total_coins * 0.1) +
+            (current_streak * 5)
+        )
+        
+        leaderboard_data.append({
+            'student': student,
+            'score': ranking_score,  # For ranking/ordering
+            'total_score': total_score,  # Sum of subject scores
+            'subject_scores': subject_scores,  # Individual subject scores
+            'total_quizzes': total_quizzes,
+            'total_mock_tests': total_mock_tests,
+            'average_score': average_score,
+            'total_coins': total_coins,
+            'current_streak': current_streak
+        })
+    
+    # Sort by ranking_score descending (use total_score for tie-breaking)
+    leaderboard_data.sort(key=lambda x: (x['score'], x['total_score']), reverse=True)
+    
+    # Update or create leaderboard entries
+    print(f"   Updating {len(leaderboard_data)} leaderboard entries...")
+    for rank, data in enumerate(leaderboard_data, start=1):
+        # Store subject scores as JSON in a custom field (we'll add this to model or use JSONField)
+        # For now, we'll calculate it on-the-fly in the API response
+        entry, created = LeaderboardEntry.objects.update_or_create(
+            student_id=data['student'],
+            ranking_type=ranking_type,
+            defaults={
+                'rank': rank,
+                'score': data['score'],
+                'total_quizzes': data['total_quizzes'],
+                'total_mock_tests': data['total_mock_tests'],
+                'average_score': data['average_score'],
+                'total_coins': data['total_coins'],
+                'current_streak': data['current_streak']
+            }
+        )
+        # Store subject scores temporarily in a dict that we'll pass to serializer
+        entry._subject_scores = data['subject_scores']  # Temporary storage for API response
+        entry._total_score = data['total_score']  # Store total score
+        
+        if created:
+            print(f"   ✅ Created leaderboard entry for {data['student'].student_username} (rank {rank})")
+        else:
+            print(f"   🔄 Updated leaderboard entry for {data['student'].student_username} (rank {rank})")
+    
+    print(f"✅ Leaderboard calculation complete for {ranking_type}")

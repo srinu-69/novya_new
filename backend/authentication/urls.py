@@ -50,4 +50,18 @@ urlpatterns = [
     
     # Video Watching Reward endpoints
     path('coins/check-video-reward/', views.check_video_watching_reward, name='check_video_watching_reward'),
+    
+    # Badges endpoints
+    path('badges/', views.get_user_badges, name='get_user_badges'),
+    path('badges/award/', views.award_badge, name='award_badge'),
+    
+    # Streaks endpoints
+    path('streaks/', views.get_user_streak, name='get_user_streak'),
+    path('streaks/update/', views.update_streak, name='update_streak'),
+    
+    # Daily Summary endpoints
+    path('daily-summary/', views.get_daily_summary, name='get_daily_summary'),
+    
+    # Leaderboard endpoints
+    path('leaderboard/', views.get_leaderboard, name='get_leaderboard'),
 ]

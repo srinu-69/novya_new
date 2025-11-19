@@ -2772,23 +2772,59 @@ const generateStudySessionsFromPlan = (content, startDate) => {
             sessionStorage.setItem(videoKey, 'true');
             
             console.log('✅ Video watching reward awarded successfully (from database):', newBalance, 'coins');
+            
+            // Update streak after video completion
+            try {
+              const { updateStreak, updateDailySummary } = await import('../../utils/coinTracking');
+              await updateStreak();
+              await updateDailySummary();
+            } catch (error) {
+              console.error('❌ Error updating streak/daily summary:', error);
+            }
           } else {
             console.error('❌ Invalid coin result from database:', coinResult);
             // Still mark as completed even if coin award fails
             setPointsAwarded(true);
             sessionStorage.setItem(videoKey, 'true');
+            
+            // Still update streak and daily summary
+            try {
+              const { updateStreak, updateDailySummary } = await import('../../utils/coinTracking');
+              await updateStreak();
+              await updateDailySummary();
+            } catch (error) {
+              console.error('❌ Error updating streak/daily summary:', error);
+            }
           }
         } else {
           console.log('ℹ️ Video watching reward already given (checked from database)');
           // Mark as awarded even if reward was already given
           setPointsAwarded(true);
           sessionStorage.setItem(videoKey, 'true');
+          
+          // Still update streak and daily summary
+          try {
+            const { updateStreak, updateDailySummary } = await import('../../utils/coinTracking');
+            await updateStreak();
+            await updateDailySummary();
+          } catch (error) {
+            console.error('❌ Error updating streak/daily summary:', error);
+          }
         }
       } catch (error) {
         console.error('❌ Error checking/awarding video watching reward:', error);
         // Still mark as completed even if coin operation fails
         setPointsAwarded(true);
         sessionStorage.setItem(videoKey, 'true');
+        
+        // Still update streak and daily summary
+        try {
+          const { updateStreak, updateDailySummary } = await import('../../utils/coinTracking');
+          await updateStreak();
+          await updateDailySummary();
+        } catch (error) {
+          console.error('❌ Error updating streak/daily summary:', error);
+        }
       }
     }
   };

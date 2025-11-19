@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { FaChevronRight, FaUser, FaHeart, FaUserShield, FaMapMarkerAlt, FaGraduationCap, FaShoppingCart, FaCog, FaMoon, FaSun } from 'react-icons/fa';
+import { FaChevronRight, FaUser, FaHeart, FaUserShield, FaMapMarkerAlt, FaGraduationCap, FaShoppingCart, FaCog, FaMoon, FaSun, FaChartLine, FaFire, FaClock, FaCheckCircle, FaRocket } from 'react-icons/fa';
+import { API_CONFIG, djangoAPI } from '../../config/api';
 
 const ProfilePage = () => {
    useEffect(() => {
@@ -42,6 +43,9 @@ const ProfilePage = () => {
   };
 
   const [settings, setSettings] = useState(defaultSettings);
+  const [dailySummary, setDailySummary] = useState(null);
+  const [dailySummaryLoading, setDailySummaryLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // AI Voice options with realistic names
   const aiVoices = [
@@ -71,6 +75,31 @@ const ProfilePage = () => {
       document.body.style.color = '#000000';
     }
   }, [settings.darkMode]);
+
+  // Fetch daily summary
+  const fetchDailySummary = async (date = null) => {
+    try {
+      setDailySummaryLoading(true);
+      const dateToFetch = date || selectedDate;
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.DAILY_SUMMARY, {
+        params: { date: dateToFetch }
+      });
+      if (response) {
+        setDailySummary(response);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching daily summary:', error);
+      setDailySummary(null);
+    } finally {
+      setDailySummaryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'dailySummary') {
+      fetchDailySummary();
+    }
+  }, [activeTab, selectedDate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -196,6 +225,7 @@ const ProfilePage = () => {
               { id: 'guardian', icon: <FaUserShield size={14} />, label: 'Guardian Details' },
               { id: 'address', icon: <FaMapMarkerAlt size={14} />, label: 'Address Details' },
               { id: 'academic', icon: <FaGraduationCap size={14} />, label: 'Academic Details' },
+              { id: 'dailySummary', icon: <FaChartLine size={14} />, label: 'Daily Summary' },
               { id: 'purchases', icon: <FaShoppingCart size={14} />, label: 'My Purchases' },
               { id: 'settings', icon: <FaCog size={14} />, label: 'Settings' }
             ].map(item => (
@@ -949,6 +979,239 @@ const ProfilePage = () => {
                   Save Changes
                 </button>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'dailySummary' && (
+            <div>
+              <h3 style={{ 
+                margin: '0 0 20px 0', 
+                fontSize: '18px', 
+                fontWeight: '600',
+                color: theme.color
+              }}>Daily Summary</h3>
+              
+              {/* Date Selector */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '8px',
+                  fontWeight: '500',
+                  color: settings.darkMode ? '#bbb' : '#555',
+                  fontSize: '14px'
+                }}>Select Date</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: `1px solid ${theme.borderColor}`,
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    backgroundColor: theme.inputBackground,
+                    color: theme.inputColor,
+                    maxWidth: '300px'
+                  }}
+                />
+                <button
+                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  style={{
+                    marginLeft: '10px',
+                    padding: '10px 16px',
+                    backgroundColor: theme.buttonSecondary,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: theme.color
+                  }}
+                >
+                  Today
+                </button>
+              </div>
+
+              {dailySummaryLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: settings.darkMode ? '#bbb' : '#666' }}>
+                  Loading daily summary...
+                </div>
+              ) : dailySummary ? (
+                <div>
+                  {/* Activity Cards */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                    gap: '20px',
+                    marginBottom: '30px'
+                  }}>
+                    {/* Quizzes Completed */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      textAlign: 'center'
+                    }}>
+                      <FaCheckCircle size={32} color="#4a6bff" style={{ marginBottom: '10px' }} />
+                      <h4 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '600', color: theme.color }}>
+                        {dailySummary.quizzes_completed || 0}
+                      </h4>
+                      <p style={{ margin: '0', color: settings.darkMode ? '#bbb' : '#666', fontSize: '14px' }}>
+                        Quizzes Completed
+                      </p>
+                    </div>
+
+                    {/* Mock Tests Completed */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      textAlign: 'center'
+                    }}>
+                      <FaGraduationCap size={32} color="#764ba2" style={{ marginBottom: '10px' }} />
+                      <h4 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '600', color: theme.color }}>
+                        {dailySummary.mock_tests_completed || 0}
+                      </h4>
+                      <p style={{ margin: '0', color: settings.darkMode ? '#bbb' : '#666', fontSize: '14px' }}>
+                        Mock Tests Completed
+                      </p>
+                    </div>
+
+                    {/* Quick Practices */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      textAlign: 'center'
+                    }}>
+                      <FaRocket size={32} color="#f59e0b" style={{ marginBottom: '10px' }} />
+                      <h4 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '600', color: theme.color }}>
+                        {dailySummary.quick_practices_completed || 0}
+                      </h4>
+                      <p style={{ margin: '0', color: settings.darkMode ? '#bbb' : '#666', fontSize: '14px' }}>
+                        Quick Practices
+                      </p>
+                    </div>
+
+                    {/* Study Time */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      textAlign: 'center'
+                    }}>
+                      <FaClock size={32} color="#10b981" style={{ marginBottom: '10px' }} />
+                      <h4 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '600', color: theme.color }}>
+                        {Math.round((dailySummary.total_study_time_minutes || 0) / 60)}h {((dailySummary.total_study_time_minutes || 0) % 60)}m
+                      </h4>
+                      <p style={{ margin: '0', color: settings.darkMode ? '#bbb' : '#666', fontSize: '14px' }}>
+                        Total Study Time
+                      </p>
+                    </div>
+
+                    {/* Coins Earned */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      textAlign: 'center'
+                    }}>
+                      <FaFire size={32} color="#ef4444" style={{ marginBottom: '10px' }} />
+                      <h4 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '600', color: theme.color }}>
+                        {dailySummary.coins_earned || 0}
+                      </h4>
+                      <p style={{ margin: '0', color: settings.darkMode ? '#bbb' : '#666', fontSize: '14px' }}>
+                        Coins Earned
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Performance Scores */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    {/* Average Quiz Score */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: theme.backgroundColor,
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`
+                    }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '600', color: theme.color }}>
+                        Average Quiz Score
+                      </h4>
+                      <p style={{ margin: '0', fontSize: '28px', fontWeight: '600', color: '#4a6bff' }}>
+                        {dailySummary.average_quiz_score ? Math.round(dailySummary.average_quiz_score) : 0}%
+                      </p>
+                    </div>
+
+                    {/* Average Mock Test Score */}
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: theme.backgroundColor,
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`
+                    }}>
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '600', color: theme.color }}>
+                        Average Mock Test Score
+                      </h4>
+                      <p style={{ margin: '0', fontSize: '28px', fontWeight: '600', color: '#764ba2' }}>
+                        {dailySummary.average_mock_test_score ? Math.round(dailySummary.average_mock_test_score) : 0}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Activity Summary JSON (if available) */}
+                  {dailySummary.activity_summary && (
+                    <div style={{
+                      padding: '20px',
+                      backgroundColor: theme.backgroundColor,
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.borderColor}`,
+                      marginTop: '20px'
+                    }}>
+                      <h4 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '600', color: theme.color }}>
+                        Detailed Activity Summary
+                      </h4>
+                      <pre style={{
+                        margin: '0',
+                        padding: '15px',
+                        backgroundColor: settings.darkMode ? '#1e1e1e' : '#f5f5f5',
+                        borderRadius: '4px',
+                        overflow: 'auto',
+                        fontSize: '12px',
+                        color: theme.color,
+                        maxHeight: '300px'
+                      }}>
+                        {JSON.stringify(dailySummary.activity_summary, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '40px',
+                  backgroundColor: settings.darkMode ? '#2d2d2d' : '#f9f9f9',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme.borderColor}`
+                }}>
+                  <p style={{ color: settings.darkMode ? '#bbb' : '#666', fontSize: '16px', margin: '0 0 10px 0' }}>
+                    No activity data available for this date
+                  </p>
+                  <p style={{ color: settings.darkMode ? '#999' : '#999', fontSize: '14px', margin: 0 }}>
+                    Complete quizzes, mock tests, or quick practices to see your daily summary here!
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

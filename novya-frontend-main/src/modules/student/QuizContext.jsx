@@ -2,7 +2,7 @@
 // ////quiz coins working
 import { createContext, useContext, useState, useEffect } from 'react';
 import { submitQuizAttempt, submitMockTestAttempt, getRecentQuizAttempts, getStudentPerformance } from '../../utils/quizTracking';
-import { addCoins, addCoinsForMockTest, getCoinBalance } from '../../utils/coinTracking';
+import { addCoins, addCoinsForMockTest, getCoinBalance, updateStreak, awardBadge, updateDailySummary } from '../../utils/coinTracking';
 
 const QuizContext = createContext();
 
@@ -23,6 +23,7 @@ export const QuizProvider = ({ children }) => {
   // History arrays for detailed tracking
   const [quizHistory, setQuizHistory] = useState([]);
   const [mockHistory, setMockHistory] = useState([]);
+  const [lessonHistory, setLessonHistory] = useState([]); // NEW: Lesson history state
   
   // Load user-specific data from database on mount
   useEffect(() => {
@@ -148,6 +149,17 @@ export const QuizProvider = ({ children }) => {
           }
         } catch (error) {
           console.error('❌ Error loading recent attempts from database:', error);
+        }
+        
+        // Load lesson history from localStorage
+        try {
+          const savedLessonHistory = localStorage.getItem("lessonHistory");
+          if (savedLessonHistory) {
+            setLessonHistory(JSON.parse(savedLessonHistory));
+            console.log('✅ Lesson history loaded from localStorage');
+          }
+        } catch (error) {
+          console.error('❌ Error loading lesson history:', error);
         }
         
         // Load performance data
@@ -378,6 +390,35 @@ export const QuizProvider = ({ children }) => {
               window.dispatchEvent(new CustomEvent('quizCompleted', {
                 detail: { score, totalQuestions, type: 'quiz' }
               }));
+              
+              // Update streak after quiz completion
+              try {
+                await updateStreak();
+              } catch (error) {
+                console.error('❌ Error updating streak:', error);
+              }
+              
+              // Update daily summary
+              try {
+                await updateDailySummary();
+              } catch (error) {
+                console.error('❌ Error updating daily summary:', error);
+              }
+              
+              // Check for Quick Master badge (10+ quick practices with 80+ average score)
+              try {
+                const { getStudentPerformance } = await import('../../utils/quizTracking');
+                const performance = await getStudentPerformance();
+                if (performance && performance.quiz_stats) {
+                  const totalAttempts = performance.quiz_stats.total_attempts || 0;
+                  const averageScore = performance.quiz_stats.average_score || 0;
+                  if (totalAttempts >= 10 && averageScore >= 80) {
+                    await awardBadge('quick_master');
+                  }
+                }
+              } catch (error) {
+                console.error('❌ Error checking for Quick Master badge:', error);
+              }
             } else {
               console.error('❌ Invalid coin result from database:', coinResult);
               // Reset the flag if database update failed
@@ -397,6 +438,14 @@ export const QuizProvider = ({ children }) => {
       } else {
         console.log(`No points awarded for quiz: Score ${score}/${totalQuestions} is below minimum threshold (5)`);
       }
+    }
+    
+    // Update streak and daily summary even if no points awarded
+    try {
+      await updateStreak();
+      await updateDailySummary();
+    } catch (error) {
+      console.error('❌ Error updating streak/daily summary:', error);
     }
     
     // Dispatch quiz completed event even if no points awarded (for database sync)
@@ -528,9 +577,46 @@ export const QuizProvider = ({ children }) => {
         }));
         console.log('✅ Mock test completed event dispatched (unexpected result)');
       }
+      
+      // Update streak after mock test completion
+      try {
+        await updateStreak();
+      } catch (error) {
+        console.error('❌ Error updating streak:', error);
+      }
+      
+      // Update daily summary
+      try {
+        await updateDailySummary();
+      } catch (error) {
+        console.error('❌ Error updating daily summary:', error);
+      }
+      
+      // Check for Mock Master badge (5+ mock tests with 75+ average score)
+      try {
+        const { getStudentPerformance } = await import('../../utils/quizTracking');
+        const performance = await getStudentPerformance();
+        if (performance && performance.mock_test_stats) {
+          const totalAttempts = performance.mock_test_stats.total_attempts || 0;
+          const averageScore = performance.mock_test_stats.average_score || 0;
+          if (totalAttempts >= 5 && averageScore >= 75) {
+            await awardBadge('mock_master');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error checking for Mock Master badge:', error);
+      }
     } catch (error) {
       console.error('❌ Error adding coins for mock test:', error);
       console.error('❌ Error details:', error);
+      
+      // Still update streak and daily summary even on error
+      try {
+        await updateStreak();
+        await updateDailySummary();
+      } catch (updateError) {
+        console.error('❌ Error updating streak/daily summary:', updateError);
+      }
       
       // Still try to refresh balance from database even on error
       try {
@@ -562,6 +648,185 @@ export const QuizProvider = ({ children }) => {
     return mockHistory;
   };
 
+  // UPDATED: Enhanced Lesson History Functions to track all activity types
+  const getLessonHistory = () => {
+    return lessonHistory;
+  };
+
+  const addLessonToHistory = (lessonData) => {
+    try {
+      // Create a unique identifier for the activity
+      const activityId = `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const newActivity = {
+        id: activityId,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
+        videoCompleted: lessonData.activityType === 'video' ? true : false,
+        completed: true,
+        rewardPoints: lessonData.rewardPoints || 0,
+        duration: lessonData.duration || 15, // Default 15 minutes
+        ...lessonData
+      };
+
+      const updatedHistory = [newActivity, ...lessonHistory];
+      setLessonHistory(updatedHistory);
+      
+      // Save to localStorage
+      localStorage.setItem("lessonHistory", JSON.stringify(updatedHistory));
+
+      // Award reward points if any
+      if (lessonData.rewardPoints && lessonData.rewardPoints > 0) {
+        const total = rewardPoints + lessonData.rewardPoints;
+        setRewardPoints(total);
+      }
+
+      // Dispatch storage event to notify LearningReports component
+      window.dispatchEvent(new Event('storage'));
+      
+      return true;
+    } catch (error) {
+      console.error('Error saving lesson history:', error);
+      return false;
+    }
+  };
+
+  // NEW: Function to track specific activity types
+  const trackLearningActivity = (activityData) => {
+    const defaultData = {
+      activityType: 'general',
+      subject: 'General',
+      chapter: 'General',
+      title: 'Learning Activity',
+      duration: 15,
+      rewardPoints: 5, // Default points for any learning activity
+      completed: true,
+      timestamp: new Date().toISOString()
+    };
+
+    const activityToSave = { ...defaultData, ...activityData };
+    return addLessonToHistory(activityToSave);
+  };
+
+  // NEW: Specific functions for different activity types
+  const trackVideoCompletion = (videoData) => {
+    const activityData = {
+      activityType: 'video',
+      title: videoData.title || `${videoData.subject} - ${videoData.chapter}`,
+      rewardPoints: 10, // More points for video completion
+      duration: videoData.duration || 20,
+      ...videoData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  const trackAIAssistantUsage = (aiData) => {
+    const activityData = {
+      activityType: 'ai_assistant',
+      title: aiData.title || 'AI Assistant Session',
+      rewardPoints: 5,
+      duration: aiData.duration || 10,
+      ...aiData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  const trackNotesCreation = (notesData) => {
+    const activityData = {
+      activityType: 'notes',
+      title: notesData.title || 'Notes Created',
+      rewardPoints: 3,
+      duration: notesData.duration || 5,
+      ...notesData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  const trackQuickPractice = (practiceData) => {
+    const activityData = {
+      activityType: 'quick_practice',
+      title: practiceData.title || 'Quick Practice',
+      rewardPoints: 7,
+      duration: practiceData.duration || 15,
+      ...practiceData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  // NEW: Function to track feedback submission
+  const trackFeedbackSubmission = (feedbackData) => {
+    const activityData = {
+      activityType: 'feedback',
+      title: feedbackData.title || 'Platform Feedback',
+      rewardPoints: feedbackData.rewardPoints || 0, // No points for regular feedback, only first time
+      duration: 5, // Quick activity
+      rating: feedbackData.rating,
+      comment: feedbackData.comment,
+      ...feedbackData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  // NEW: Function to track typing practice
+  const trackTypingPractice = (typingData) => {
+    const activityData = {
+      activityType: 'typing_practice',
+      title: typingData.title || `Typing Practice - ${typingData.difficulty} Level`,
+      rewardPoints: typingData.rewardPoints || 0,
+      duration: typingData.duration || 5,
+      subject: 'Typing',
+      chapter: 'Keyboard Skills',
+      speed: typingData.speed,
+      accuracy: typingData.accuracy,
+      difficulty: typingData.difficulty,
+      keystrokes: typingData.keystrokes,
+      correctKeystrokes: typingData.correctKeystrokes,
+      ...typingData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  // NEW: Function to track spin wheel activity
+  const trackSpinWheel = (spinData) => {
+    const activityData = {
+      activityType: 'spin_wheel',
+      title: spinData.title || 'Daily Spin Wheel',
+      rewardPoints: spinData.rewardPoints || 0,
+      duration: spinData.duration || 1,
+      subject: 'Rewards',
+      chapter: 'Daily Bonus',
+      rewardName: spinData.rewardName,
+      rewardValue: spinData.rewardValue,
+      spinsRemaining: spinData.spinsRemaining,
+      ...spinData
+    };
+    return trackLearningActivity(activityData);
+  };
+
+  const updateLessonCompletion = (lessonId, updates) => {
+    try {
+      const updatedHistory = lessonHistory.map(lesson => 
+        lesson.id === lessonId ? { ...lesson, ...updates } : lesson
+      );
+      setLessonHistory(updatedHistory);
+      
+      // Save to localStorage
+      localStorage.setItem("lessonHistory", JSON.stringify(updatedHistory));
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating lesson:', error);
+      return false;
+    }
+  };
+
+  // Save lessonHistory to localStorage whenever it changes
+  useEffect(() => {
+    if (lessonHistory.length > 0) {
+      localStorage.setItem("lessonHistory", JSON.stringify(lessonHistory));
+    }
+  }, [lessonHistory]);
+
   // Original endQuiz
   const endQuiz = () => setIsQuizActive(false);
 
@@ -574,6 +839,22 @@ export const QuizProvider = ({ children }) => {
         updateMockTestResults,
         getQuizHistory,
         getMockHistory,
+        
+        // Lesson history functions
+        getLessonHistory,
+        addLessonToHistory,
+        updateLessonCompletion,
+        
+        // NEW: Enhanced activity tracking functions
+        trackLearningActivity,
+        trackVideoCompletion,
+        trackAIAssistantUsage,
+        trackNotesCreation,
+        trackQuickPractice,
+        trackFeedbackSubmission,
+        trackTypingPractice,
+        trackSpinWheel,
+        
         isQuizActive,
         startQuiz,
         endQuiz,

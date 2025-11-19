@@ -486,3 +486,54 @@ export const syncLocalStorageCoinsToDatabase = async () => {
   }
 };
 
+/**
+ * Update user streak when activity is completed
+ */
+export const updateStreak = async () => {
+  try {
+    console.log('🔥 Updating user streak...');
+    const response = await djangoAPI.post(API_CONFIG.DJANGO.STREAKS.UPDATE_STREAK, {});
+    console.log('✅ Streak updated successfully:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error updating streak:', error);
+    return null;
+  }
+};
+
+/**
+ * Award a badge to the user
+ * @param {string} badgeType - Type of badge ('quick_master', 'mock_master', 'streak_7', 'streak_15', 'streak_30')
+ */
+export const awardBadge = async (badgeType) => {
+  try {
+    console.log(`🏆 Awarding badge: ${badgeType}...`);
+    const response = await djangoAPI.post(API_CONFIG.DJANGO.BADGES.AWARD_BADGE, {
+      badge_type: badgeType
+    });
+    console.log('✅ Badge awarded successfully:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error awarding badge:', error);
+    return null;
+  }
+};
+
+/**
+ * Trigger daily summary update (recalculates from database)
+ */
+export const updateDailySummary = async (date = null) => {
+  try {
+    console.log('📊 Updating daily summary...');
+    const url = date 
+      ? `${API_CONFIG.DJANGO.DAILY_SUMMARY.GET_DAILY_SUMMARY}?date=${date}`
+      : API_CONFIG.DJANGO.DAILY_SUMMARY.GET_DAILY_SUMMARY;
+    const response = await djangoAPI.get(url);
+    console.log('✅ Daily summary updated:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error updating daily summary:', error);
+    return null;
+  }
+};
+

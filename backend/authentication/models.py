@@ -329,3 +329,153 @@ class StudentFeedback(models.Model):
         indexes = [
             models.Index(fields=['student_id', 'created_at']),
         ]
+
+
+class UserBadge(models.Model):
+    """
+    User Badge model - Tracks badges earned by students
+    """
+    BADGE_TYPE_CHOICES = [
+        ('quick_master', 'Quick Master'),
+        ('mock_master', 'Mock Master'),
+        ('streak_7', 'Steady Learner'),
+        ('streak_15', 'Focused Mind'),
+        ('streak_30', 'Learning Legend'),
+    ]
+    
+    badge_id = models.AutoField(primary_key=True)
+    student_id = models.ForeignKey(StudentRegistration, on_delete=models.CASCADE, db_column='student_id')
+    badge_type = models.CharField(max_length=50, choices=BADGE_TYPE_CHOICES)
+    badge_title = models.CharField(max_length=100)
+    badge_description = models.TextField(null=True, blank=True)
+    earned_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.student_id.student_username} - {self.badge_title}"
+    
+    class Meta:
+        db_table = 'user_badge'
+        verbose_name = 'User Badge'
+        verbose_name_plural = 'User Badges'
+        unique_together = [['student_id', 'badge_type']]  # One badge type per student
+        ordering = ['-earned_at']
+        indexes = [
+            models.Index(fields=['student_id', 'badge_type']),
+            models.Index(fields=['student_id', 'earned_at']),
+        ]
+
+
+class UserStreak(models.Model):
+    """
+    User Streak model - Tracks daily learning streaks for students
+    """
+    streak_id = models.AutoField(primary_key=True)
+    student_id = models.OneToOneField(StudentRegistration, on_delete=models.CASCADE, db_column='student_id')
+    current_streak = models.IntegerField(default=0)  # Current consecutive days
+    longest_streak = models.IntegerField(default=0)  # Longest streak ever achieved
+    last_activity_date = models.DateField(null=True, blank=True)  # Last date of activity
+    total_days_active = models.IntegerField(default=0)  # Total days with activity
+    streak_started_at = models.DateField(null=True, blank=True)  # When current streak started
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.student_id.student_username} - {self.current_streak} day streak"
+    
+    class Meta:
+        db_table = 'user_streak'
+        verbose_name = 'User Streak'
+        verbose_name_plural = 'User Streaks'
+
+
+class DailyActivity(models.Model):
+    """
+    Daily Activity model - Tracks daily learning activities for summary
+    """
+    activity_id = models.AutoField(primary_key=True)
+    student_id = models.ForeignKey(StudentRegistration, on_delete=models.CASCADE, db_column='student_id')
+    activity_date = models.DateField()
+    
+    # Activity counts
+    quizzes_completed = models.IntegerField(default=0)
+    mock_tests_completed = models.IntegerField(default=0)
+    quick_practices_completed = models.IntegerField(default=0)
+    classroom_activities = models.IntegerField(default=0)
+    
+    # Time tracking
+    total_study_time_minutes = models.IntegerField(default=0)
+    
+    # Scores
+    average_quiz_score = models.FloatField(default=0.0)
+    average_mock_test_score = models.FloatField(default=0.0)
+    
+    # Coins earned
+    coins_earned = models.IntegerField(default=0)
+    
+    # Metadata
+    activity_summary = models.JSONField(null=True, blank=True)  # Store detailed summary as JSON
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.student_id.student_username} - {self.activity_date}"
+    
+    class Meta:
+        db_table = 'daily_activity'
+        verbose_name = 'Daily Activity'
+        verbose_name_plural = 'Daily Activities'
+        unique_together = [['student_id', 'activity_date']]  # One record per student per day
+        ordering = ['-activity_date']
+        indexes = [
+            models.Index(fields=['student_id', 'activity_date']),
+            models.Index(fields=['activity_date']),
+        ]
+
+
+class LeaderboardEntry(models.Model):
+    """
+    Leaderboard Entry model - Stores calculated leaderboard rankings
+    """
+    RANKING_TYPE_CHOICES = [
+        ('overall', 'Overall'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('subject', 'Subject'),
+        ('class', 'Class'),
+    ]
+    
+    entry_id = models.AutoField(primary_key=True)
+    student_id = models.ForeignKey(StudentRegistration, on_delete=models.CASCADE, db_column='student_id')
+    ranking_type = models.CharField(max_length=50, choices=RANKING_TYPE_CHOICES)
+    rank = models.IntegerField()  # Position in leaderboard
+    score = models.FloatField(default=0.0)  # Score used for ranking
+    period_start = models.DateField(null=True, blank=True)  # For weekly/monthly rankings
+    period_end = models.DateField(null=True, blank=True)
+    subject = models.CharField(max_length=100, null=True, blank=True)  # For subject rankings
+    class_name = models.CharField(max_length=50, null=True, blank=True)  # For class rankings
+    
+    # Metrics used for ranking
+    total_quizzes = models.IntegerField(default=0)
+    total_mock_tests = models.IntegerField(default=0)
+    average_score = models.FloatField(default=0.0)
+    total_coins = models.IntegerField(default=0)
+    current_streak = models.IntegerField(default=0)
+    
+    calculated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.student_id.student_username} - {self.ranking_type} - Rank {self.rank}"
+    
+    class Meta:
+        db_table = 'leaderboard_entry'
+        verbose_name = 'Leaderboard Entry'
+        verbose_name_plural = 'Leaderboard Entries'
+        unique_together = [
+            ['student_id', 'ranking_type', 'period_start', 'period_end', 'subject', 'class_name']
+        ]
+        ordering = ['ranking_type', 'rank']
+        indexes = [
+            models.Index(fields=['ranking_type', 'rank']),
+            models.Index(fields=['student_id', 'ranking_type']),
+            models.Index(fields=['period_start', 'period_end']),
+        ]

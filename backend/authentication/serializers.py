@@ -5,7 +5,8 @@ from django.db import IntegrityError
 from .models import (
     User, Student, Parent, PasswordResetToken, 
     ParentRegistration, StudentRegistration, ParentStudentMapping, StudentProfile,
-    CoinTransaction, UserCoinBalance, StudentFeedback
+    CoinTransaction, UserCoinBalance, StudentFeedback,
+    UserBadge, UserStreak, DailyActivity, LeaderboardEntry
 )
 
 
@@ -652,3 +653,131 @@ class StudentFeedbackCreateSerializer(serializers.Serializer):
     """
     rating = serializers.IntegerField(min_value=1, max_value=5)
     comment = serializers.CharField(max_length=1000, allow_blank=True)
+
+
+# New serializers for Badges, Streaks, Daily Summary, and Leaderboard
+
+class UserBadgeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User Badge
+    """
+    student_username = serializers.CharField(source='student_id.student_username', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserBadge
+        fields = [
+            'badge_id', 'student_id', 'student_username', 'student_name',
+            'badge_type', 'badge_title', 'badge_description',
+            'earned_at', 'is_active'
+        ]
+        read_only_fields = ['badge_id', 'earned_at']
+    
+    def get_student_name(self, obj):
+        try:
+            return f"{obj.student_id.first_name} {obj.student_id.last_name}"
+        except:
+            return "Unknown"
+
+
+class UserStreakSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User Streak
+    """
+    student_username = serializers.CharField(source='student_id.student_username', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    milestone_info = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserStreak
+        fields = [
+            'streak_id', 'student_id', 'student_username', 'student_name',
+            'current_streak', 'longest_streak', 'last_activity_date',
+            'total_days_active', 'streak_started_at', 'updated_at',
+            'milestone_info'
+        ]
+        read_only_fields = ['streak_id', 'updated_at']
+    
+    def get_student_name(self, obj):
+        try:
+            return f"{obj.student_id.first_name} {obj.student_id.last_name}"
+        except:
+            return "Unknown"
+    
+    def get_milestone_info(self, obj):
+        """
+        Calculate milestone information based on current streak
+        """
+        milestones = [
+            {'days': 7, 'title': 'Steady Learner'},
+            {'days': 15, 'title': 'Focused Mind'},
+            {'days': 30, 'title': 'Learning Legend'}
+        ]
+        
+        next_milestone = None
+        days_left = 0
+        
+        for milestone in milestones:
+            if obj.current_streak < milestone['days']:
+                next_milestone = milestone
+                days_left = milestone['days'] - obj.current_streak
+                break
+        
+        achieved = [m for m in milestones if obj.current_streak >= m['days']]
+        
+        return {
+            'next_milestone': next_milestone,
+            'days_left': days_left,
+            'achieved': achieved,
+            'all_milestones': milestones
+        }
+
+
+class DailyActivitySerializer(serializers.ModelSerializer):
+    """
+    Serializer for Daily Activity
+    """
+    student_username = serializers.CharField(source='student_id.student_username', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DailyActivity
+        fields = [
+            'activity_id', 'student_id', 'student_username', 'student_name',
+            'activity_date', 'quizzes_completed', 'mock_tests_completed',
+            'quick_practices_completed', 'classroom_activities',
+            'total_study_time_minutes', 'average_quiz_score',
+            'average_mock_test_score', 'coins_earned', 'activity_summary',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['activity_id', 'created_at', 'updated_at']
+    
+    def get_student_name(self, obj):
+        try:
+            return f"{obj.student_id.first_name} {obj.student_id.last_name}"
+        except:
+            return "Unknown"
+
+
+class LeaderboardEntrySerializer(serializers.ModelSerializer):
+    """
+    Serializer for Leaderboard Entry
+    """
+    student_username = serializers.CharField(source='student_id.student_username', read_only=True)
+    student_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = LeaderboardEntry
+        fields = [
+            'entry_id', 'student_id', 'student_username', 'student_name',
+            'ranking_type', 'rank', 'score', 'period_start', 'period_end',
+            'subject', 'class_name', 'total_quizzes', 'total_mock_tests',
+            'average_score', 'total_coins', 'current_streak', 'calculated_at'
+        ]
+        read_only_fields = ['entry_id', 'calculated_at']
+    
+    def get_student_name(self, obj):
+        try:
+            return f"{obj.student_id.first_name} {obj.student_id.last_name}"
+        except:
+            return "Unknown"

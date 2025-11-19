@@ -114,18 +114,26 @@ function Quiz() {
       });
   };
 
-  // UPDATED: fetchQuiz now uses API config
+  // UPDATED: fetchQuiz now uses API config with subject and class_name
   const fetchQuiz = (subtopic, level = 1, retry = false, language = "English") => {
     if (!subtopic) return;
     setLoading(true);
     
     // Construct URL with language parameter using API config
+    // IMPORTANT: Include class_name and subject to ensure correct subject questions
     const params = {
       subtopic: subtopic,
       currentLevel: level,
       retry: retry,
-      language: language
+      language: language,
     };
+    // Only add class_name and subject if they have values (avoid sending empty strings)
+    if (selectedClass) {
+      params.class_name = selectedClass;
+    }
+    if (selectedSubject) {
+      params.subject = selectedSubject;
+    }
     const url = API_CONFIG.FASTAPI.QUICK_PRACTICE.GENERATE_QUIZ(params);
     
     console.log("Fetching quiz with URL:", url);
@@ -134,8 +142,25 @@ function Quiz() {
     fastAPI.get(url)
       .then((data) => {
         console.log("Quiz data received:", data);
-        if (data.error) setError(data.error);
-        else {
+        
+        // Check for error in response (from backend)
+        if (data.error) {
+          console.error("Backend returned error:", data.error);
+          setError(data.error);
+          setLoading(false);
+          return;
+        }
+        
+        // Check if quiz data exists
+        if (!data.quiz || !Array.isArray(data.quiz) || data.quiz.length === 0) {
+          console.error("No quiz data in response:", data);
+          setError("No questions received from server. Please try again.");
+          setLoading(false);
+          return;
+        }
+        
+        // Process quiz data
+        try {
           const cleanedQuiz = data.quiz.map((q) => {
             q.options = q.options.map((opt) => opt.replace(/^[A-D][).]\s*/, ""));
             q.answer = q.answer.replace(/^[A-D][).]\s*/, "");
@@ -154,12 +179,15 @@ function Quiz() {
           
           // Start the quiz in context
           startQuiz();
+        } catch (processError) {
+          console.error("Error processing quiz data:", processError);
+          setError("Error processing quiz data. Please try again.");
         }
         setLoading(false);
       })
       .catch((error) => {
         console.error("Fetch error:", error);
-        setError(`${t('quiz_data_issue')}: ${error.message}`);
+        setError(`${t('quiz_data_issue')}: ${error.message || 'Unknown error occurred'}`);
         setLoading(false);
       });
   };

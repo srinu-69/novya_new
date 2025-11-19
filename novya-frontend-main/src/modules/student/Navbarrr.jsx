@@ -2829,11 +2829,14 @@ import {
   FaHistory,
   FaTrash,
   FaBars,
+  FaFire,
+  FaTrophy,
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import './Navbarrr.css';
 import novyaLogo from '../home/assets/NOVYA LOGO.png';
 import { API_CONFIG, djangoAPI } from '../../config/api';
+import { updateStreak, getTrophyTitle } from './streaksUtil';
 
 const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -2866,6 +2869,9 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [rewardsHistory, setRewardsHistory] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [streakTitle, setStreakTitle] = useState('');
+  const [streakDropdownOpen, setStreakDropdownOpen] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -2952,10 +2958,62 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
     return historyEntry;
   };
 
+  // Load streak data
+  const loadStreak = async () => {
+    try {
+      // First check localStorage
+      const savedStreak = localStorage.getItem('userStreak');
+      if (savedStreak) {
+        const streakData = JSON.parse(savedStreak);
+        setStreak(streakData.current_streak || 0);
+        // Determine streak title based on streak count
+        if (streakData.current_streak >= 30) {
+          setStreakTitle('Learning Legend');
+        } else if (streakData.current_streak >= 15) {
+          setStreakTitle('Focused Mind');
+        } else if (streakData.current_streak >= 7) {
+          setStreakTitle('Steady Learner');
+        } else {
+          setStreakTitle('');
+        }
+        console.log('✅ Loaded streak from localStorage:', streakData.current_streak);
+      }
+      
+      // Then fetch from API to ensure it's up to date
+      try {
+        const response = await djangoAPI.get(API_CONFIG.DJANGO.STREAKS.GET_STREAK);
+        if (response && response.current_streak !== undefined) {
+          setStreak(response.current_streak || 0);
+          // Update localStorage
+          localStorage.setItem('userStreak', JSON.stringify(response));
+          // Determine streak title
+          if (response.current_streak >= 30) {
+            setStreakTitle('Learning Legend');
+          } else if (response.current_streak >= 15) {
+            setStreakTitle('Focused Mind');
+          } else if (response.current_streak >= 7) {
+            setStreakTitle('Steady Learner');
+          } else {
+            setStreakTitle('');
+          }
+          console.log('✅ Loaded streak from API:', response.current_streak);
+        }
+      } catch (error) {
+        console.error('❌ Error loading streak from API:', error);
+        // Continue with localStorage data if API fails
+      }
+    } catch (error) {
+      console.error('❌ Error loading streak:', error);
+      setStreak(0);
+      setStreakTitle('');
+    }
+  };
+
   useEffect(() => {
     loadStudyPlans();
     loadNotifications();
     loadRewardsHistory();
+    loadStreak();
 
     const handleStudyPlanAdded = (event) => {
       if (event.detail && event.detail.studyPlan) {
@@ -2976,6 +3034,25 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
       loadStudyPlans();
     };
 
+    const handleStreakUpdated = (event) => {
+      if (event.detail && event.detail.streak) {
+        const streakData = event.detail.streak;
+        setStreak(streakData.current_streak || 0);
+        localStorage.setItem('userStreak', JSON.stringify(streakData));
+        // Determine streak title
+        if (streakData.current_streak >= 30) {
+          setStreakTitle('Learning Legend');
+        } else if (streakData.current_streak >= 15) {
+          setStreakTitle('Focused Mind');
+        } else if (streakData.current_streak >= 7) {
+          setStreakTitle('Steady Learner');
+        } else {
+          setStreakTitle('');
+        }
+        console.log('✅ Streak updated from event:', streakData.current_streak);
+      }
+    };
+
     const handleStorageChange = (e) => {
       if (e.key === 'studyPlans') {
         loadStudyPlans();
@@ -2986,11 +3063,15 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
       if (e.key === 'rewardsHistory') {
         loadRewardsHistory();
       }
+      if (e.key === 'userStreak') {
+        loadStreak();
+      }
     };
 
     window.addEventListener('studyPlanAdded', handleStudyPlanAdded);
     window.addEventListener('notificationAdded', handleNotificationAdded);
     window.addEventListener('studyPlanUpdated', handleStudyPlanUpdated);
+    window.addEventListener('streakUpdated', handleStreakUpdated);
     window.addEventListener('storage', handleStorageChange);
    
     // Removed setInterval to prevent infinite loop - only load on mount and events
@@ -3000,6 +3081,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
       window.removeEventListener('studyPlanAdded', handleStudyPlanAdded);
       window.removeEventListener('notificationAdded', handleNotificationAdded);
       window.removeEventListener('studyPlanUpdated', handleStudyPlanUpdated);
+      window.removeEventListener('streakUpdated', handleStreakUpdated);
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
@@ -3552,6 +3634,50 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
     // This prevents duplicate entries in the database
   }, []); // Only run once on mount
 
+  // Load streak on mount from API
+  useEffect(() => {
+    const loadStreak = async () => {
+      try {
+        const response = await djangoAPI.get(API_CONFIG.DJANGO.STREAKS.GET_STREAK);
+        if (response && response.current_streak !== undefined) {
+          setStreak(response.current_streak);
+          setStreakTitle(getTrophyTitle(response.current_streak));
+          
+          // Also update milestone info if available
+          if (response.milestone_info) {
+            // Milestone info is already calculated in the serializer
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching streak from API, using local fallback:', error);
+        // Fallback to local streak calculation
+        const streakData = updateStreak();
+        setStreak(streakData.streak);
+        setStreakTitle(getTrophyTitle(streakData.streak));
+      }
+    };
+    
+    loadStreak();
+  }, []);
+
+  // Get streak milestone information
+  const getStreakMilestones = () => {
+    const milestones = [
+      { days: 7, title: 'Steady Learner' },
+      { days: 15, title: 'Focused Mind' },
+      { days: 30, title: 'Learning Legend' }
+    ];
+
+    const nextMilestone = milestones.find(m => streak < m.days);
+    const daysLeft = nextMilestone ? nextMilestone.days - streak : 0;
+
+    return {
+      nextMilestone,
+      daysLeft,
+      milestones
+    };
+  };
+
   useEffect(() => {
     const handleRewardPointsUpdate = (event) => {
       if (event.detail && event.detail.rewardPoints !== undefined) {
@@ -3691,6 +3817,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
         { path: '/quick-practice', name: t('quick_practice', 'Quick Practice') },
         { path: '/mock-test', name: t('mock_test', 'Mock Test') },
         { path: '/spin-wheel', name: t('spin_wheel', 'Spin Wheel') },
+        { path: '/typing-master', name: t('typingMaster', 'Typing Master') },
       ],
     },
     { path: '/career', name: t('career', 'Career') },
@@ -4897,7 +5024,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
           )}
 
           {/* Reward Points - Always Visible */}
-<div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
   <motion.div
     className="reward-points"
     onClick={() => {
@@ -5078,6 +5205,142 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
     )}
   </AnimatePresence>
 </div>
+
+          {/* Streak Display - Between Coins and Profile */}
+          <div
+            style={{ position: 'relative' }}
+            onMouseEnter={() => setStreakDropdownOpen(true)}
+            onMouseLeave={() => setStreakDropdownOpen(false)}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                background: 'transparent',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                margin: '0 8px'
+              }}
+              onClick={() => setStreakDropdownOpen(!streakDropdownOpen)}
+            >
+              <FaFire
+                size={16}
+                color={streak >= 7 ? '#FF6B35' : streak >= 15 ? '#FFD700' : '#FF5722'}
+                style={{
+                  filter: streak >= 7 ? `drop-shadow(0 0 2px ${streak >= 15 ? '#FFD700' : '#FF6B35'}50)` : 'none',
+                  transition: 'all 0.3s ease'
+                }}
+              />
+              <span style={{
+                fontFamily: "'Poppins', sans-serif",
+                fontWeight: '600',
+                fontSize: '14px',
+                color: '#000000'
+              }}>
+                {streak}
+              </span>
+            </div>
+
+            {/* Streak Dropdown with Milestones */}
+            <AnimatePresence>
+              {streakDropdownOpen && (
+                <motion.div
+                  className="nav-dropdown"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    minWidth: '280px',
+                    background: 'white',
+                    borderRadius: '12px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                    border: '1px solid #e5e7eb',
+                    zIndex: 1000,
+                    padding: '16px'
+                  }}
+                  onMouseEnter={() => setStreakDropdownOpen(true)}
+                  onMouseLeave={() => setStreakDropdownOpen(false)}
+                >
+                  {(() => {
+                    const { nextMilestone, daysLeft, milestones } = getStreakMilestones();
+                    return (
+                      <>
+                        <div style={{ marginBottom: '16px' }}>
+                          <h3 style={{ 
+                            fontSize: '16px', 
+                            fontWeight: '600', 
+                            margin: '0 0 10px 0',
+                            color: '#111827'
+                          }}>
+                            Next Milestone
+                          </h3>
+                          {nextMilestone ? (
+                            <p style={{
+                              fontSize: '14px',
+                              color: '#4B5563',
+                              margin: 0,
+                              fontWeight: '500',
+                              lineHeight: '1.5'
+                            }}>
+                              {daysLeft} {daysLeft === 1 ? 'day' : 'days'} more for {nextMilestone.title}
+                            </p>
+                          ) : (
+                            <p style={{
+                              fontSize: '14px',
+                              color: '#10B981',
+                              margin: 0,
+                              fontWeight: '600'
+                            }}>
+                              🎉 You've reached the maximum level!
+                            </p>
+                          )}
+                        </div>
+                        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
+                          {milestones.map((milestone, index) => {
+                            const isAchieved = streak >= milestone.days;
+                            const isNext = nextMilestone && milestone.days === nextMilestone.days;
+                            return (
+                              <div
+                                key={index}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '10px 0',
+                                  color: isAchieved ? '#059669' : isNext ? '#111827' : '#6B7280',
+                                  fontWeight: isAchieved ? '600' : isNext ? '600' : '400',
+                                  fontSize: '14px',
+                                  lineHeight: '1.5'
+                                }}
+                              >
+                                <span>
+                                  {milestone.title}
+                                </span>
+                                <span style={{ 
+                                  fontSize: '13px',
+                                  color: isAchieved ? '#059669' : '#9CA3AF',
+                                  fontWeight: '400'
+                                }}>
+                                  ({milestone.days} days)
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           {/* Avatar - Always Visible */}
           <div
             style={{ position: 'relative' }}
@@ -5102,14 +5365,110 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                   style={{ right: 0, left: 'auto' }}
                 >
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', background: 'linear-gradient(135deg, #fff9e6, #fff0cc)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#744210', fontWeight: '600' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#744210', fontWeight: '600', marginBottom: '8px' }}>
                       <FaCoins size={14} color="#FFA500" />
                       <span>{t('reward_points')}: {currentRewardPoints.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#744210', fontWeight: '600' }}>
+                      <FaFire size={14} color={streak >= 7 ? '#FF6B35' : '#FF5722'} />
+                      <span>{t('streak', 'Streak')}: {streak} {streak > 0 ? t('days', 'days') : t('day', 'day')}</span>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => navigate('/user-details')}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAvatarOpen(false);
+                      navigate('/daily-summary');
+                    }}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px',
+                      color: '#1F2937',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => { e.target.style.background = '#f0f0f0'; }}
+                    onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
+                  >
+                    <FaCalendarAlt size={14} />
+                    {t('dailySummary', 'Daily Summary')}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAvatarOpen(false);
+                      navigate('/badges');
+                    }}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px',
+                      color: '#1F2937',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => { e.target.style.background = '#f0f0f0'; }}
+                    onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
+                  >
+                    <FaTrophy size={14} />
+                    {t('badges', 'Badges')}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAvatarOpen(false);
+                      navigate('/leadership');
+                    }}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px',
+                      color: '#1F2937',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => { e.target.style.background = '#f0f0f0'; }}
+                    onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
+                  >
+                    <FaTrophy size={14} />
+                    {t('leadership', 'Leadership')}
+                  </button>
+
+                  <div style={{ borderTop: '1px solid #f0f0f0', margin: '4px 0' }}></div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAvatarOpen(false);
+                      navigate('/user-details');
+                    }}
                     style={{
                       width: '100%',
                       border: 'none',
@@ -5127,10 +5486,15 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
                   >
                     <FaUserCircle size={14} />
-                   {t('view_profile')}
+                   {t('view_profile', 'View Profile')}
                   </button>
                   <button
-                    onClick={handleLogout}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleLogout();
+                    }}
                     style={{
                       width: '100%',
                       border: 'none',
@@ -5148,7 +5512,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
                   >
                     <FaSignOutAlt size={14} />
-                   {t('logout')}
+                   {t('logout', 'Logout')}
                   </button>
                 </motion.div>
               )}

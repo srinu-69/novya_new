@@ -915,6 +915,16 @@ Provide only the hint text, no extra formatting.`;
     
     fastAPI.get(API_CONFIG.FASTAPI.MOCK_TEST.GENERATE_TEST(params))
       .then(data => {
+        console.log("Mock test data received:", data);
+        
+        // Check for error in response (from backend)
+        if (data.error) {
+          console.error("Backend returned error:", data.error);
+          setError(data.error);
+          setLoading(false);
+          return;
+        }
+        
         let questions = [];
        
         if (Array.isArray(data)) {
@@ -926,11 +936,17 @@ Provide only the hint text, no extra formatting.`;
         } else if (data && data.questions) {
           questions = Object.values(data.questions);
         } else {
-          throw new Error("Invalid response format: " + JSON.stringify(data));
+          console.error("Invalid response format:", data);
+          setError("Invalid response format from server. Please try again.");
+          setLoading(false);
+          return;
         }
        
         if (questions.length === 0) {
-          throw new Error("No questions received from server");
+          console.error("No questions in response:", data);
+          setError("No questions received from server. Please try again.");
+          setLoading(false);
+          return;
         }
 
         const validQuestions = questions

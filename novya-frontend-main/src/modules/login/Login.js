@@ -1158,6 +1158,16 @@ const LoginPage = () => {
         localStorage.setItem('firstName', response.user.firstname || response.user.first_name);
       }
       
+      // Store streak data if provided (for students)
+      if (activeTab === 'student' && response.streak) {
+        localStorage.setItem('userStreak', JSON.stringify(response.streak));
+        console.log('✅ Streak data stored from login:', response.streak);
+        // Dispatch event to update navbar
+        window.dispatchEvent(new CustomEvent('streakUpdated', { 
+          detail: { streak: response.streak }
+        }));
+      }
+      
       // Reset reward caches for the newly authenticated user
       localStorage.setItem('rewardPoints', '0');
       localStorage.removeItem('rewardsHistory');

@@ -722,6 +722,7 @@ def submit_quiz_attempt(request):
                 class_name = 'Unknown Class'
         
         # Create quiz attempt
+        print(f"📝 Creating QuizAttempt with quiz_type='{validated_data['quiz_type']}' for student {student_reg.student_username}")
         attempt = QuizAttempt.objects.create(
             student_id=student_reg,
             quiz_type=validated_data['quiz_type'],
@@ -742,6 +743,7 @@ def submit_quiz_attempt(request):
             answers_json=answers_json,
             completion_percentage=(validated_data['correct_answers'] / validated_data['total_questions']) * 100
         )
+        print(f"✅ QuizAttempt created: attempt_id={attempt.attempt_id}, quiz_type='{attempt.quiz_type}', score={attempt.score}, attempted_at={attempt.attempted_at}")
         
         # Create a dummy Quiz record for AI-generated questions (required by foreign key)
         dummy_quiz = None
@@ -836,6 +838,15 @@ def submit_quiz_attempt(request):
         
         # Update student performance
         update_student_performance(student_reg, attempt)
+        
+        # Update DailyActivity for this student on today's date
+        try:
+            from authentication.views import update_daily_activity
+            update_daily_activity(student_reg, timezone.now().date())
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to update DailyActivity: {e}")
+            import traceback
+            traceback.print_exc()
         
         return Response({
             'message': 'Quiz attempt submitted successfully',
@@ -964,6 +975,15 @@ def submit_mock_test_attempt(request):
         print(f"   Stored chapter: {attempt.chapter}")
         print(f"   Stored total_questions: {attempt.total_questions}")
         print(f"   Stored correct_answers: {attempt.correct_answers}")
+        
+        # Update DailyActivity for this student on today's date
+        try:
+            from authentication.views import update_daily_activity
+            update_daily_activity(student_reg, timezone.now().date())
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to update DailyActivity: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Create individual mock test answers for detailed tracking
         for i, (question, answer) in enumerate(zip(test_questions, user_answers)):

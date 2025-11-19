@@ -690,7 +690,7 @@
 
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import React from 'react';
-import { useQuiz } from './modules/student/QuizContext';
+import { QuizProvider, useQuiz } from './modules/student/QuizContext';
 
 // Home Modules
 import Navbar from './modules/home/Navbar';
@@ -729,6 +729,11 @@ import QuickPractice from './modules/student/QuickPractice';
 import MockTest from './modules/student/MockTest';
 import UserDetailsPage from './modules/student/UserDetailsPage';
 import StudyRoom from './modules/student/StudyRoom';
+import TypingMaster from './modules/student/TypingMaster/TypingMaster';
+import LearningReports from './modules/student/DailySummary';
+import LeadershipBoard from './modules/student/LeadershipBoard';
+import Badges from './modules/student/Badges';
+import { ScreenTimeProvider } from './modules/student/ScreenTime';
 
 // Practice & Mock Test Modules
 import PracticeSubjectPage from './modules/student/PracticeSubjectPage';
@@ -804,7 +809,12 @@ function App() {
     '/learn/quizzes',
     '/learn/recordings',
     '/quick-practice',
-    '/quiz-test'
+    '/quiz-test',
+    '/typing-master',
+    '/daily-summary',
+    '/leadership',
+    '/badges',
+    '/screentime'
   ].some(path => location.pathname.startsWith(path));
 
   // Parent routes detection
@@ -817,7 +827,8 @@ function App() {
   const hideStudentNavbar = [
     '/quick-practice',
     '/profile',
-    '/user-details'
+    '/user-details',
+    '/typing-master'
   ].some(path => location.pathname.startsWith(path));
 
   // Mock test routes where chatbot should be hidden
@@ -828,7 +839,9 @@ function App() {
   ].some(path => location.pathname.startsWith(path));
 
   return (
-      <div className="app-container">
+    <ScreenTimeProvider>
+      <QuizProvider>
+        <div className="app-container">
         {/* Home Navbar */}
         {!hideNavbarFooter && !isStudentPage && !isParentPage && !isTeacherPage && <Navbar />}
 
@@ -885,6 +898,30 @@ function App() {
           <Route path="/student/dashboard" element={
             <ProtectedRoute>
               <RoleRoute requiredRole="student"><Home1 /></RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/daily-summary" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="student">
+                <LearningReports />
+              </RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/leadership" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="student">
+                <LeadershipBoard />
+              </RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/badges" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="student">
+                <Badges />
+              </RoleRoute>
             </ProtectedRoute>
           } />
 
@@ -954,6 +991,18 @@ function App() {
     </ProtectedRoute>
   }
   />
+
+          <Route
+            path="/typing-master"
+            element={
+              <ProtectedRoute>
+                <RoleRoute requiredRole="student">
+                  <TypingMaster />
+                </RoleRoute>
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="/career" element={
             <ProtectedRoute>
               <RoleRoute requiredRole="student"><Career /></RoleRoute>
@@ -1115,7 +1164,9 @@ function App() {
 
         {/* Student Chatbox */}
         {isStudentPage && !hideStudentNavbar && !isMockTestPage && <div className="student-chatbox-container"><Chatbox /></div>}
-      </div>
+        </div>
+      </QuizProvider>
+    </ScreenTimeProvider>
   );
 }
 

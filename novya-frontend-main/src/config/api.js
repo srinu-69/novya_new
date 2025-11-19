@@ -67,6 +67,15 @@ export const API_CONFIG = {
       GET_COIN_TRANSACTIONS: `${DJANGO_BASE_URL}/auth/coins/transactions/`,
       CHECK_DAILY_LOGIN_REWARD: `${DJANGO_BASE_URL}/auth/coins/check-daily-login/`,
       CHECK_VIDEO_REWARD: `${DJANGO_BASE_URL}/auth/coins/check-video-reward/`,
+      
+      // Streaks endpoints
+      STREAKS: {
+        GET_STREAK: `${DJANGO_BASE_URL}/auth/streaks/`,
+        UPDATE_STREAK: `${DJANGO_BASE_URL}/auth/streaks/update/`,
+      },
+      
+      // Daily Summary endpoints
+      DAILY_SUMMARY: `${DJANGO_BASE_URL}/auth/daily-summary/`,
     },
     
     // Courses
@@ -153,6 +162,22 @@ export const API_CONFIG = {
       SAVE_CALENDAR_ENTRY: `${DJANGO_BASE_URL}/ai-assistant/calendar/save/`,
       SAVE_CALENDAR_ENTRIES: `${DJANGO_BASE_URL}/ai-assistant/calendar/save-multiple/`,
       GET_CALENDAR_ENTRIES: `${DJANGO_BASE_URL}/ai-assistant/calendar/entries/`,
+    },
+    
+    // Badges, Streaks, Daily Summary, and Leaderboard
+    BADGES: {
+      GET_BADGES: `${DJANGO_BASE_URL}/auth/badges/`,
+      AWARD_BADGE: `${DJANGO_BASE_URL}/auth/badges/award/`,
+    },
+    STREAKS: {
+      GET_STREAK: `${DJANGO_BASE_URL}/auth/streaks/`,
+      UPDATE_STREAK: `${DJANGO_BASE_URL}/auth/streaks/update/`,
+    },
+    DAILY_SUMMARY: {
+      GET_DAILY_SUMMARY: `${DJANGO_BASE_URL}/auth/daily-summary/`,
+    },
+    LEADERBOARD: {
+      GET_LEADERBOARD: `${DJANGO_BASE_URL}/auth/leaderboard/`,
     },
   },
   
@@ -360,8 +385,31 @@ export const fastAPI = {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return await response.json();
+    
+    // Try to parse JSON, but handle errors gracefully
+    let data;
+    try {
+      const text = await response.text();
+      if (text) {
+        data = JSON.parse(text);
+      } else {
+        data = { error: `Server returned empty response (status: ${response.status})` };
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, create error object
+      console.error("Failed to parse response JSON:", parseError);
+      data = { 
+        error: `Server error (status: ${response.status}). Failed to parse response.` 
+      };
+    }
+    
+    // Handle all error status codes gracefully - return the error data instead of throwing
+    if (!response.ok) {
+      // For 401, 402, 500, etc. - return the error data so frontend can display it
+      return data; // Return error data so frontend can handle it
+    }
+    
+    return data;
   },
   
   post: async (url, data) => {

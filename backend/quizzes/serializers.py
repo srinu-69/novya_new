@@ -248,8 +248,13 @@ class QuizAttemptSubmissionSerializer(serializers.Serializer):
     
     def validate(self, data):
         # Map frontend field names to backend field names
+        # Normalize quiz_type: 'quiz' -> 'database' (for quick practice)
+        quiz_type = data.get('quizType', 'ai_generated')
+        if quiz_type == 'quiz':
+            quiz_type = 'database'  # Quick practice quizzes are database quizzes
+        
         mapped_data = {
-            'quiz_type': data.get('quizType', 'ai_generated'),
+            'quiz_type': quiz_type,
             'subject': data.get('subject'),
             'chapter': data.get('chapter', ''),
             'topic': data.get('topic', ''),

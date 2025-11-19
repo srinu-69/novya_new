@@ -522,6 +522,87 @@ CREATE TABLE student_feedback (
 );
 
 -- =====================================================
+-- BADGES, STREAKS, DAILY SUMMARY, AND LEADERBOARD MODULE
+-- =====================================================
+
+-- User Badges
+-- Tracks badges earned by students
+CREATE TABLE user_badge (
+    badge_id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    badge_type VARCHAR(50) NOT NULL, -- 'quick_master', 'mock_master', 'streak_7', 'streak_15', 'streak_30'
+    badge_title VARCHAR(100) NOT NULL,
+    badge_description TEXT,
+    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id),
+    CONSTRAINT uq_user_badge_student_type UNIQUE (student_id, badge_type)
+);
+
+-- User Streaks
+-- Tracks daily learning streaks for students
+CREATE TABLE user_streak (
+    streak_id SERIAL PRIMARY KEY,
+    student_id INTEGER UNIQUE NOT NULL,
+    current_streak INTEGER DEFAULT 0, -- Current consecutive days
+    longest_streak INTEGER DEFAULT 0, -- Longest streak ever achieved
+    last_activity_date DATE, -- Last date of activity
+    total_days_active INTEGER DEFAULT 0, -- Total days with activity
+    streak_started_at DATE, -- When current streak started
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id)
+);
+
+-- Daily Activity
+-- Tracks daily learning activities for summary
+CREATE TABLE daily_activity (
+    activity_id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    activity_date DATE NOT NULL,
+    -- Activity counts
+    quizzes_completed INTEGER DEFAULT 0,
+    mock_tests_completed INTEGER DEFAULT 0,
+    quick_practices_completed INTEGER DEFAULT 0,
+    classroom_activities INTEGER DEFAULT 0,
+    -- Time tracking
+    total_study_time_minutes INTEGER DEFAULT 0,
+    -- Scores
+    average_quiz_score FLOAT DEFAULT 0.0,
+    average_mock_test_score FLOAT DEFAULT 0.0,
+    -- Coins earned
+    coins_earned INTEGER DEFAULT 0,
+    -- Metadata
+    activity_summary JSONB, -- Store detailed summary as JSON
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id),
+    CONSTRAINT uq_daily_activity_student_date UNIQUE (student_id, activity_date)
+);
+
+-- Leaderboard Entry
+-- Stores calculated leaderboard rankings
+CREATE TABLE leaderboard_entry (
+    entry_id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    ranking_type VARCHAR(50) NOT NULL, -- 'overall', 'weekly', 'monthly', 'subject', 'class'
+    rank INTEGER NOT NULL, -- Position in leaderboard
+    score FLOAT DEFAULT 0.0, -- Score used for ranking
+    period_start DATE, -- For weekly/monthly rankings
+    period_end DATE, -- For weekly/monthly rankings
+    subject VARCHAR(100), -- For subject rankings
+    class_name VARCHAR(50), -- For class rankings
+    -- Metrics used for ranking
+    total_quizzes INTEGER DEFAULT 0,
+    total_mock_tests INTEGER DEFAULT 0,
+    average_score FLOAT DEFAULT 0.0,
+    total_coins INTEGER DEFAULT 0,
+    current_streak INTEGER DEFAULT 0,
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id),
+    CONSTRAINT uq_leaderboard_entry UNIQUE (student_id, ranking_type, period_start, period_end, subject, class_name)
+);
+
+-- =====================================================
 -- NOTIFICATIONS MODULE
 -- =====================================================
 
@@ -782,6 +863,22 @@ CREATE INDEX idx_user_coin_balance_student ON user_coin_balance(student_id);
 CREATE INDEX idx_student_feedback_student ON student_feedback(student_id);
 CREATE INDEX idx_student_feedback_date ON student_feedback(created_at);
 
+-- Badges, Streaks, Daily Summary, and Leaderboard Indexes
+CREATE INDEX idx_user_badge_student ON user_badge(student_id);
+CREATE INDEX idx_user_badge_type ON user_badge(badge_type);
+CREATE INDEX idx_user_badge_student_type ON user_badge(student_id, badge_type);
+CREATE INDEX idx_user_badge_student_earned ON user_badge(student_id, earned_at);
+
+CREATE INDEX idx_user_streak_student ON user_streak(student_id);
+
+CREATE INDEX idx_daily_activity_student ON daily_activity(student_id);
+CREATE INDEX idx_daily_activity_date ON daily_activity(activity_date);
+CREATE INDEX idx_daily_activity_student_date ON daily_activity(student_id, activity_date);
+
+CREATE INDEX idx_leaderboard_entry_type_rank ON leaderboard_entry(ranking_type, rank);
+CREATE INDEX idx_leaderboard_entry_student_type ON leaderboard_entry(student_id, ranking_type);
+CREATE INDEX idx_leaderboard_entry_period ON leaderboard_entry(period_start, period_end);
+
 -- Student Notifications Indexes
 CREATE INDEX idx_student_notifications_student ON student_notifications(student_id);
 CREATE INDEX idx_student_notifications_date ON student_notifications(created_at);
@@ -847,6 +944,10 @@ COMMENT ON TABLE ai_interaction_sessions IS 'Groups AI interactions into session
 COMMENT ON TABLE ai_favorites IS 'Stores student favorites for AI content';
 COMMENT ON TABLE calendar IS 'Stores individual study plan calendar entries for the Study Calendar widget';
 COMMENT ON TABLE coin_transaction IS 'Tracks all coin/reward point transactions (earned/spent)';
+COMMENT ON TABLE user_badge IS 'Tracks badges earned by students';
+COMMENT ON TABLE user_streak IS 'Tracks daily learning streaks for students';
+COMMENT ON TABLE daily_activity IS 'Tracks daily learning activities for summary';
+COMMENT ON TABLE leaderboard_entry IS 'Stores calculated leaderboard rankings';
 COMMENT ON TABLE user_coin_balance IS 'Stores current coin balance for each user (optimized for quick access)';
 COMMENT ON TABLE student_feedback IS 'Stores feedback from students with rating and comments';
 COMMENT ON TABLE student_notifications IS 'Stores study plan notifications for students';

@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Student, Parent, Teacher, PasswordResetToken
+from .models import (
+    User, Student, Parent, Teacher, PasswordResetToken,
+    UserBadge, UserStreak, DailyActivity, LeaderboardEntry
+)
 
 
 @admin.register(User)
@@ -71,3 +74,47 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
     list_filter = ('is_used', 'created_at', 'expires_at')
     search_fields = ('user__username', 'user__email', 'token')
     readonly_fields = ('token', 'created_at')
+
+
+@admin.register(UserBadge)
+class UserBadgeAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for UserBadge model
+    """
+    list_display = ('student_id', 'badge_type', 'badge_title', 'earned_at', 'is_active')
+    list_filter = ('badge_type', 'is_active', 'earned_at')
+    search_fields = ('student_id__student_username', 'badge_title', 'badge_type')
+    readonly_fields = ('earned_at',)
+
+
+@admin.register(UserStreak)
+class UserStreakAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for UserStreak model
+    """
+    list_display = ('student_id', 'current_streak', 'longest_streak', 'last_activity_date', 'total_days_active')
+    list_filter = ('last_activity_date',)
+    search_fields = ('student_id__student_username',)
+    readonly_fields = ('updated_at',)
+
+
+@admin.register(DailyActivity)
+class DailyActivityAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for DailyActivity model
+    """
+    list_display = ('student_id', 'activity_date', 'quizzes_completed', 'mock_tests_completed', 'coins_earned')
+    list_filter = ('activity_date',)
+    search_fields = ('student_id__student_username',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(LeaderboardEntry)
+class LeaderboardEntryAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for LeaderboardEntry model
+    """
+    list_display = ('student_id', 'ranking_type', 'rank', 'score', 'calculated_at')
+    list_filter = ('ranking_type', 'calculated_at')
+    search_fields = ('student_id__student_username', 'ranking_type')
+    readonly_fields = ('calculated_at',)
