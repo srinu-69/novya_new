@@ -64,4 +64,5 @@ urlpatterns = [
     
     # Leaderboard endpoints
     path('leaderboard/', views.get_leaderboard, name='get_leaderboard'),
+    path('leaderboard/recalculate/', views.recalculate_leaderboard, name='recalculate_leaderboard'),
 ]

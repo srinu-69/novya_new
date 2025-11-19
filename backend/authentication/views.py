@@ -3004,3 +3004,37 @@ def calculate_leaderboard(ranking_type='overall'):
             print(f"   🔄 Updated leaderboard entry for {data['student'].student_username} (rank {rank})")
     
     print(f"✅ Leaderboard calculation complete for {ranking_type}")
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def recalculate_leaderboard(request):
+    """
+    Manually trigger leaderboard recalculation for a specific ranking type
+    Useful for admins or after significant data changes
+    """
+    try:
+        ranking_type = request.data.get('type', 'overall')
+        
+        # Validate ranking type
+        valid_types = ['overall', 'weekly', 'monthly']
+        if ranking_type not in valid_types:
+            return Response({
+                'error': f'Invalid ranking type. Must be one of: {", ".join(valid_types)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate leaderboard
+        calculate_leaderboard(ranking_type)
+        
+        return Response({
+            'message': f'Leaderboard recalculated successfully for type: {ranking_type}',
+            'ranking_type': ranking_type
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error in recalculate_leaderboard: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to recalculate leaderboard: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

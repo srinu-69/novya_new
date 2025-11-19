@@ -722,16 +722,33 @@ const TypingMaster = () => {
     
     console.log("🔧 Attempting to generate lesson for:", level);
 
-    // ✅ FIXED: Ensure correct API URL for all levels
+    // ✅ FIXED: Add random seed/timestamp to ensure different content each attempt
+    const randomSeed = Date.now() + Math.random() * 1000;
+    const topics = [
+      "technology and computers",
+      "nature and environment",
+      "education and learning",
+      "science and discovery",
+      "travel and adventure",
+      "food and cooking",
+      "sports and fitness",
+      "music and arts",
+      "history and culture",
+      "health and wellness"
+    ];
+    const randomTopic = topics[Math.floor(Math.random() * topics.length)];
+
+    // ✅ FIXED: Ensure correct API URL for all levels with randomization
     const response = await fetch("http://127.0.0.1:8000/generate-typing-lesson", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      // ✅ FIXED: Use clear prompt for AI
+      // ✅ FIXED: Use clear prompt for AI with random topic and seed for variety
       body: JSON.stringify({
-        prompt: `Generate a realistic ${level} level typing practice paragraph containing at least 80-100 words.`,
+        prompt: `Generate a unique and realistic ${level} level typing practice paragraph about ${randomTopic}, containing at least 80-100 words. Make it different from previous attempts.`,
         difficulty: level,
+        randomSeed: randomSeed,
       }),
     });
 
@@ -765,23 +782,39 @@ const TypingMaster = () => {
       Beginner: [
         "The quick brown fox jumps over the lazy dog. Practice typing every day to improve your speed and accuracy. Start with simple words and gradually move to longer sentences. Keep your fingers on the home row and maintain good posture while typing. Regular practice will help you develop muscle memory and become a faster typist.",
         "Learning to type quickly takes consistent effort and proper technique. Begin with basic exercises focusing on home row keys. Remember to keep your wrists straight and fingers curved over the keyboard. Accuracy matters more than speed when starting out. Build good habits from the beginning for long term success in typing.",
-        "Typing is an essential modern skill that everyone should master. Start with simple texts and progress to more complex ones over time. Focus on proper finger placement and maintaining a steady rhythm. Daily practice builds confidence and competence. Soon you will type without looking at the keyboard at all."
+        "Typing is an essential modern skill that everyone should master. Start with simple texts and progress to more complex ones over time. Focus on proper finger placement and maintaining a steady rhythm. Daily practice builds confidence and competence. Soon you will type without looking at the keyboard at all.",
+        "Computers have changed how we work and communicate with others around the world. Learning keyboard skills opens many opportunities for better jobs and faster writing. Start slow and focus on hitting the right keys without mistakes. Speed will come naturally as you practice more each day.",
+        "Reading books helps expand your vocabulary and improves your understanding of language. When typing, try to look ahead at the next few words you need to type. This helps your brain prepare for what comes next and makes typing smoother and more natural over time.",
+        "The sun shines bright in the sky during summer days. Children play outside in parks and gardens while birds sing beautiful songs. Nature provides fresh air and green spaces for everyone to enjoy. Taking breaks from typing helps your hands rest and prevents strain.",
+        "Cooking delicious meals requires fresh ingredients and careful preparation. Follow recipes step by step to create tasty dishes for your family. Practice makes perfect in both cooking and typing skills. Take time to learn the basics before trying advanced techniques.",
+        "Exercise keeps your body healthy and your mind sharp. Walking, running, and playing sports help build strength and endurance. Regular physical activity improves focus and concentration. Healthy habits support better performance in all areas of life including typing."
       ],
       Intermediate: [
         "Typing proficiency requires dedicated practice and proper technique. Intermediate typists should focus on maintaining accuracy while gradually increasing speed. Incorporate punctuation and capital letters into your practice sessions. Challenge yourself with varied sentence structures and vocabulary from different subjects.",
         "Effective typing skills enhance productivity in many professional and academic settings. Practice with different types of content including emails, reports, and creative writing. Pay attention to rhythm and flow while typing complex sentences. Regular practice sessions will significantly improve your overall performance and efficiency.",
-        "Developing consistent typing rhythm helps maintain both speed and accuracy over longer texts. Practice with materials that include numbers, special characters, and varied punctuation marks. Focus on reducing errors rather than maximizing speed initially. Quality practice sessions yield better long-term results than rushed attempts at typing quickly."
+        "Developing consistent typing rhythm helps maintain both speed and accuracy over longer texts. Practice with materials that include numbers, special characters, and varied punctuation marks. Focus on reducing errors rather than maximizing speed initially. Quality practice sessions yield better long-term results than rushed attempts at typing quickly.",
+        "Technology continues evolving at an astonishing pace, transforming industries and reshaping how we interact with information. Modern software applications demand efficient input methods, making typing skills more valuable than ever before. Professionals across various fields benefit from accurate and rapid text entry capabilities.",
+        "Education systems worldwide are adapting to incorporate digital literacy as a fundamental skill. Students must develop strong typing abilities to complete assignments efficiently and participate effectively in online learning environments. These competencies prepare learners for future academic and career challenges.",
+        "Scientific research reveals fascinating discoveries about human cognition and learning processes. Studies demonstrate that consistent practice with immediate feedback significantly improves skill acquisition. Typing training programs leverage these insights to optimize learning outcomes and accelerate proficiency development.",
+        "Travel experiences broaden perspectives and create lasting memories of diverse cultures and landscapes. Documenting adventures through writing requires clear communication skills and efficient typing. Journal entries capture moments that might otherwise fade from memory over time.",
+        "Culinary arts combine creativity with precise techniques to produce exceptional dining experiences. Professional chefs master complex recipes requiring careful attention to detail and timing. Typing skills help document recipes, share culinary knowledge, and manage restaurant operations effectively."
       ],
       Advanced: [
         "Advanced typing mastery involves complex textual content with technical terminology and sophisticated sentence structures. Professional typists maintain exceptional accuracy at high speeds through disciplined practice regimens and proper ergonomic setup. Challenge yourself with difficult vocabulary and complex grammatical constructions.",
         "Mastering advanced typing techniques requires analyzing your performance metrics and identifying specific areas for improvement. Incorporate specialized vocabulary from various academic and professional fields into your practice. Develop the ability to maintain consistency across different writing styles and document formats while typing rapidly.",
-        "Elite typing performance combines rapid cognitive processing with precise motor execution. Practice with challenging materials that include technical jargon, numerical data, and complex punctuation patterns. Develop the mental stamina to maintain focus and accuracy during extended typing sessions across diverse subject matters."
+        "Elite typing performance combines rapid cognitive processing with precise motor execution. Practice with challenging materials that include technical jargon, numerical data, and complex punctuation patterns. Develop the mental stamina to maintain focus and accuracy during extended typing sessions across diverse subject matters.",
+        "Sophisticated computational algorithms enable artificial intelligence systems to process vast amounts of information with remarkable efficiency. Machine learning models analyze patterns in data to make predictions and generate insights that transform business operations and scientific research methodologies.",
+        "Philosophical inquiries into the nature of consciousness and existence have occupied human thought for millennia. Contemporary neuroscience research provides empirical evidence about brain function while raising profound questions about free will, identity, and the relationship between mind and physical matter.",
+        "Economic globalization has created interconnected markets where financial decisions in one region impact economies worldwide. International trade agreements, currency fluctuations, and supply chain dynamics require sophisticated analysis and strategic planning from business leaders and policymakers.",
+        "Literary analysis examines narrative structures, character development, and thematic elements to uncover deeper meanings within texts. Scholars employ various critical frameworks including historical context, psychological perspectives, and postcolonial theory to interpret works from different cultural traditions and time periods.",
+        "Biomedical engineering combines principles from biology, medicine, and engineering to develop innovative solutions for healthcare challenges. Researchers design medical devices, diagnostic tools, and therapeutic interventions that improve patient outcomes and advance our understanding of human physiology and disease mechanisms."
       ]
     };
     
     const lessons = fallbackLessons[level] || fallbackLessons.Beginner;
-    const randomIndex = Math.floor(Math.random() * lessons.length);
-    console.log(`🎲 Using local fallback lesson ${randomIndex + 1} for ${level}`);
+    // ✅ FIXED: Use more robust randomization with timestamp for better variety
+    const randomIndex = Math.floor((Math.random() * Date.now()) % lessons.length);
+    console.log(`🎲 Using local fallback lesson ${randomIndex + 1} of ${lessons.length} for ${level}`);
     return lessons[randomIndex];
   };
 
