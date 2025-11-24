@@ -1556,8 +1556,26 @@ const LearningReports = () => {
     getTotalScreenTime,
     getTimeBreakdown,
     getTodayActivities,
-    getScreenTimeByDate
+    startGlobalSession,
+    stopGlobalSession
   } = useScreenTime();
+  
+  // Start global session tracking when component mounts (tracks portal time)
+  useEffect(() => {
+    // Start tracking portal session time if not already active
+    if (!screenTime.isSessionActive) {
+      startGlobalSession();
+      console.log('✅ Started portal session tracking');
+    }
+    
+    // Cleanup: stop session when component unmounts (but only if we started it)
+    // Note: We don't stop on unmount to keep tracking across page navigation
+    // Session will be saved when user logs out or closes browser
+    return () => {
+      // Don't stop session on unmount - keep tracking across navigation
+      // The session will be saved automatically by ScreenTime context
+    };
+  }, [screenTime.isSessionActive, startGlobalSession]); // Check if session is active
 
   const quizHistory = getQuizHistory();
   const mockHistory = getMockHistory();
@@ -1609,7 +1627,7 @@ const LearningReports = () => {
 
   // UPDATED: Calculate learning statistics for specific date
   const calculateLearningStats = (date = currentDate) => {
-    // Get actual time breakdown from screenTime
+    // Get actual time breakdown from screenTime (includes session time for today)
     const timeBreakdown = getTimeBreakdown(date);
     const todayActivities = getTodayActivities();
     
@@ -1617,6 +1635,9 @@ const LearningReports = () => {
     const quizTime = timeBreakdown.quiz;
     const mockTime = timeBreakdown.mock;
     const lessonTime = timeBreakdown.lesson;
+    
+    // getTimeBreakdown already includes session time for today, so use it directly
+    // For today, the session time is already included in timeBreakdown.total via getTimeBreakdown
     const totalStudyTime = timeBreakdown.total;
     
     // Count activities for specific date
@@ -1649,7 +1670,7 @@ const LearningReports = () => {
       quizTime,
       mockTime,
       lessonTime,
-      actualScreenTime: getScreenTimeByDate ? getScreenTimeByDate(date) : getTodayScreenTime(),
+      actualScreenTime: isToday(date) ? getTodayScreenTime() : 0,
       timeBreakdown
     };
   };
@@ -1792,8 +1813,11 @@ const LearningReports = () => {
 
   // UPDATED: Function to get total statistics from context with enhanced activity tracking
   const getTotalStatistics = () => {
-    // Get actual total study time from screenTime
-    const totalStudyTime = getTotalScreenTime();
+    // Get actual total study time from screenTime (includes current session if active)
+    const baseTotalStudyTime = getTotalScreenTime();
+    // Add current session time if active (for real-time tracking)
+    const currentSessionTime = screenTime.isSessionActive ? screenTime.sessionTime : 0;
+    const totalStudyTime = baseTotalStudyTime + currentSessionTime;
    
     // Total quizzes and mock tests - prioritize history length as it's more accurate
     // Check history first, then fall back to context totals
@@ -1991,10 +2015,18 @@ const LearningReports = () => {
               const calculatedTotalStats = getTotalStatistics();
               const finalTotalStats = totalStatsFromAPI || calculatedTotalStats;
               
+              // Calculate total study time: API data + current session time for today
+              // getTimeBreakdown already includes session time, so we need to add it to API response
+              const isDateToday = isToday(currentDate);
+              const currentSessionTime = (isDateToday && screenTime.isSessionActive) ? screenTime.sessionTime : 0;
+              const apiStudyTime = apiResponse.total_study_time_minutes || 0;
+              // Add current session time to API study time for real-time tracking
+              const totalStudyTimeWithSession = apiStudyTime + currentSessionTime;
+              
               // Transform API response to match component format
               const transformedDailyReport = {
                 summary_date: apiResponse.activity_date || currentDate,
-                total_study_time: apiResponse.total_study_time_minutes || 0,
+                total_study_time: totalStudyTimeWithSession,
                 activities_completed: (apiResponse.quizzes_completed || 0) + 
                                      (apiResponse.mock_tests_completed || 0) + 
                                      (apiResponse.quick_practices_completed || 0) + 
@@ -2009,6 +2041,21 @@ const LearningReports = () => {
               };
               
               setDailyReport(transformedDailyReport);
+              
+              // Also calculate and set weekly report even when API succeeds
+              const weeklyStats = calculateWeeklyStats(currentWeekOffset);
+              const localWeeklyReport = {
+                week_start: weeklyStats.week_start,
+                week_end: weeklyStats.week_end,
+                weekly_total_time: weeklyStats.weekly_total_time,
+                weekly_total_activities: weeklyStats.weekly_total_activities,
+                average_daily_time: weeklyStats.average_daily_time,
+                consistency_score: weeklyStats.consistency_score,
+                weekly_insights: generateWeeklyInsights(weeklyStats),
+                daily_breakdown: weeklyStats.daily_breakdown,
+                total_statistics: finalTotalStats
+              };
+              setWeeklyReport(localWeeklyReport);
               return; // Exit early if API call succeeded
             }
           } catch (dailyError) {
@@ -2030,10 +2077,19 @@ const LearningReports = () => {
 
     fetchReports();
     
-    // NEW: Set up interval for real-time updates
+    // NEW: Set up interval for real-time updates (updates study time every minute)
     const intervalId = setInterval(() => {
-      if (activeTab === 'analytics' || activeTab === 'daily') {
-        fetchReports();
+      if (activeTab === 'analytics' || activeTab === 'daily' || activeTab === 'weekly') {
+        // Refresh data to update study time with current session
+        refreshData();
+      }
+    }, 60000); // Update every minute
+    
+    // NEW: Set up interval for real-time session time updates (updates every minute while session is active)
+    const sessionUpdateInterval = setInterval(() => {
+      if (screenTime.isSessionActive && isToday(currentDate)) {
+        // Force re-render to show updated session time
+        refreshData();
       }
     }, 60000); // Update every minute
 
@@ -2046,8 +2102,29 @@ const LearningReports = () => {
     return () => {
       window.removeEventListener('storage', handleStorageUpdate);
       clearInterval(intervalId);
+      clearInterval(sessionUpdateInterval);
     };
   }, [quizHistory, mockHistory, lessonHistory, quizResults, mockTestResults, rewardPoints, screenTime, t, activeTab, currentDate, currentWeekOffset]);
+
+  // NEW: Effect to refresh weekly report when week offset changes
+  useEffect(() => {
+    if (activeTab === 'weekly') {
+      const weeklyStats = calculateWeeklyStats(currentWeekOffset);
+      const totalStats = getTotalStatistics();
+      const localWeeklyReport = {
+        week_start: weeklyStats.week_start,
+        week_end: weeklyStats.week_end,
+        weekly_total_time: weeklyStats.weekly_total_time,
+        weekly_total_activities: weeklyStats.weekly_total_activities,
+        average_daily_time: weeklyStats.average_daily_time,
+        consistency_score: weeklyStats.consistency_score,
+        weekly_insights: generateWeeklyInsights(weeklyStats),
+        daily_breakdown: weeklyStats.daily_breakdown,
+        total_statistics: totalStats
+      };
+      setWeeklyReport(localWeeklyReport);
+    }
+  }, [currentWeekOffset, activeTab, quizHistory, mockHistory, lessonHistory]);
 
   const StatCard = ({ title, value, subtitle, icon, color }) => (
     <div className="stat-card" style={{ borderLeft: `4px solid ${color}` }}>
@@ -2191,7 +2268,7 @@ const LearningReports = () => {
 
     const barData = [
       { 
-        label: t('totalStatistics.totalQuizzes'), 
+        label: 'Quizzes', 
         value: stats.totalQuizzes, 
         maxValue: maxActivityValue,
         color: '#4f46e5',
@@ -2199,7 +2276,7 @@ const LearningReports = () => {
         type: 'activity'
       },
       { 
-        label: t('totalStatistics.mockTests'), 
+        label: 'Mock Tests', 
         value: stats.totalMockTests, 
         maxValue: maxActivityValue,
         color: '#10b981',
@@ -2207,7 +2284,7 @@ const LearningReports = () => {
         type: 'activity'
       },
       { 
-        label: t('totalStatistics.classroomActivities'), 
+        label: 'Activities', 
         value: stats.totalActivitiesCompleted, 
         maxValue: maxActivityValue,
         color: '#8b5cf6',
@@ -2215,7 +2292,7 @@ const LearningReports = () => {
         type: 'activity'
       },
       { 
-        label: t('totalStatistics.totalStudyTime'), 
+        label: 'Study Time', 
         value: Math.round(stats.totalStudyTime / 60), 
         maxValue: maxTimeValue,
         color: '#f59e0b', 
@@ -2223,7 +2300,7 @@ const LearningReports = () => {
         type: 'time'
       },
       { 
-        label: t('statCards.activitiesCompleted'), 
+        label: 'Completed', 
         value: stats.activities_completed || 0, 
         maxValue: maxActivityValue,
         color: '#ef4444',
@@ -2231,7 +2308,7 @@ const LearningReports = () => {
         type: 'activity'
       },
       { 
-        label: t('statCards.productivityScore'), 
+        label: 'Productivity', 
         value: stats.productivity_score || 0, 
         maxValue: maxScoreValue,
         color: '#06b6d4',
@@ -2242,7 +2319,7 @@ const LearningReports = () => {
 
     return (
       <div className="analytics-graph">
-        <h3>📈 {t('tabs.title')}</h3>
+        <h3>📈 Analytics</h3>
         <div className="graph-container">
           {barData.map((item, index) => (
             <div key={index} className="bar-item">
@@ -2272,10 +2349,10 @@ const LearningReports = () => {
   // Time Breakdown Component
   const TimeBreakdown = ({ breakdown }) => (
     <div className="time-breakdown">
-      <h4>⏱️ {t('timeBreakdown.title')}</h4>
+      <h4>⏱️ Time Breakdown</h4>
       <div className="breakdown-bars">
         <div className="breakdown-item">
-          <span className="breakdown-label">{t('timeBreakdown.quizzes')}</span>
+          <span className="breakdown-label">Quizzes</span>
           <div className="breakdown-bar">
             <div
               className="breakdown-fill quiz-fill"
@@ -2285,7 +2362,7 @@ const LearningReports = () => {
           <span className="breakdown-time">{formatTime(breakdown.quiz)}</span>
         </div>
         <div className="breakdown-item">
-          <span className="breakdown-label">{t('timeBreakdown.mockTests')}</span>
+          <span className="breakdown-label">Mock Tests</span>
           <div className="breakdown-bar">
             <div
               className="breakdown-fill mock-fill"
@@ -2295,7 +2372,7 @@ const LearningReports = () => {
           <span className="breakdown-time">{formatTime(breakdown.mock)}</span>
         </div>
         <div className="breakdown-item">
-          <span className="breakdown-label">{t('timeBreakdown.learningActivities')}</span>
+          <span className="breakdown-label">Learning</span>
           <div className="breakdown-bar">
             <div
               className="breakdown-fill lesson-fill"
@@ -2314,23 +2391,23 @@ const LearningReports = () => {
     
     return (
       <div className="total-statistics">
-        <h3>📊 {t('totalStatistics.title')}</h3>
+        <h3>📊 Statistics</h3>
         <div className="stats-grid total-stats-grid">
           <div className="total-stat-item">
             <span className="total-stat-value">{stats.totalQuizzes}</span>
-            <span className="total-stat-label">{t('totalStatistics.totalQuizzes')}</span>
+            <span className="total-stat-label">Quizzes</span>
           </div>
           <div className="total-stat-item">
             <span className="total-stat-value">{stats.totalMockTests}</span>
-            <span className="total-stat-label">{t('totalStatistics.mockTests')}</span>
+            <span className="total-stat-label">Mock Tests</span>
           </div>
           <div className="total-stat-item">
             <span className="total-stat-value">{stats.totalActivitiesCompleted}</span>
-            <span className="total-stat-label">{t('totalStatistics.classroomActivities')}</span>
+            <span className="total-stat-label">Activities</span>
           </div>
           <div className="total-stat-item">
             <span className="total-stat-value">{formatTime(stats.totalStudyTime)}</span>
-            <span className="total-stat-label">{t('totalStatistics.totalStudyTime')}</span>
+            <span className="total-stat-label">Study Time</span>
           </div>
           {/* NEW: Streaks Display */}
           <div className="total-stat-item">
@@ -2342,7 +2419,7 @@ const LearningReports = () => {
           {/* NEW: Reward Points Display */}
           <div className="total-stat-item">
             <span className="total-stat-value">💰 {stats.rewardPoints || rewardPoints || 0}</span>
-            <span className="total-stat-label">Reward Points</span>
+            <span className="total-stat-label">Points</span>
           </div>
         </div>
       </div>
@@ -2386,20 +2463,20 @@ const LearningReports = () => {
             className={`tab ${activeTab === 'daily' ? 'active' : ''}`}
             onClick={() => setActiveTab('daily')}
           >
-            📊 {t('tabs.dailyReport')}
+            📊 Daily
           </button>
           <button
             className={`tab ${activeTab === 'weekly' ? 'active' : ''}`}
             onClick={() => setActiveTab('weekly')}
           >
-            📈 {t('tabs.weeklyReport')}
+            📈 Weekly
           </button>
           {/* UPDATED: Analytics Tab */}
           <button
             className={`tab ${activeTab === 'analytics' ? 'active' : ''}`}
             onClick={() => setActiveTab('analytics')}
           >
-            📊 {t('tabs.analytics')}
+            📊 Analytics
           </button>
         </div>
       </div>
@@ -2408,7 +2485,7 @@ const LearningReports = () => {
       {activeTab === 'daily' && dailyReport && (
         <div className="report-container">
           <div className="report-header">
-            <h2>{t('dailyReport.title')}</h2>
+            <h2>Daily Report</h2>
             <DateNavigation
               date={currentDate}
               onPrevious={goToPreviousDay}
@@ -2419,23 +2496,23 @@ const LearningReports = () => {
 
           <div className="stats-grid">
             <StatCard
-              title={t('statCards.totalStudyTime')}
+              title="Study Time"
               value={formatTime(dailyReport.total_study_time)}
-              subtitle={t('statCards.actualTimeSpent')}
+              subtitle="Time spent"
               icon="⏱️"
               color="#4f46e5"
             />
             <StatCard
-              title={t('statCards.activitiesCompleted')}
+              title="Completed"
               value={dailyReport.activities_completed}
-              subtitle={t('statCards.tasksAccomplished')}
+              subtitle="Tasks done"
               icon="✅"
               color="#10b981"
             />
             <StatCard
-              title={t('statCards.productivityScore')}
+              title="Productivity"
               value={`${dailyReport.productivity_score}/10`}
-              subtitle={t('statCards.todaysEfficiency')}
+              subtitle="Today's score"
               icon="🚀"
               color="#f59e0b"
             />
@@ -2443,7 +2520,7 @@ const LearningReports = () => {
 
           {/* UPDATED: Activities Section with enhanced display including feedback, typing, and spin wheel */}
           <div className="activities-section">
-            <h3>📚 {t('activitiesSection.title')}</h3>
+            <h3>📚 Activities</h3>
             <div className="activities-list">
               {dailyReport.activities.map((act, index) => {
                 const typeInfo = getActivityTypeInfo(act.activity_type);
@@ -2481,7 +2558,7 @@ const LearningReports = () => {
               })}
               {dailyReport.activities.length === 0 && (
                 <div className="no-activities">
-                  <p>{isToday(currentDate) ? t('activitiesSection.noActivities') : 'No activities for this date'}</p>
+                  <p>{isToday(currentDate) ? 'No activities today' : 'No activities for this date'}</p>
                 </div>
               )}
             </div>
@@ -2490,71 +2567,130 @@ const LearningReports = () => {
       )}
 
       {/* Weekly Report */}
-      {activeTab === 'weekly' && weeklyReport && (
+      {activeTab === 'weekly' && (
         <div className="report-container">
-          <div className="report-header">
-            <h2>{t('weeklyReport.title')}</h2>
-            <WeekNavigation
-              weekStart={weeklyReport.week_start}
-              weekEnd={weeklyReport.week_end}
-              onPrevious={goToPreviousWeek}
-              onNext={goToNextWeek}
-              onToday={goToToday}
-            />
-          </div>
-
-          <div className="stats-grid">
-            <StatCard
-              title={t('statCards.totalStudyTime')}
-              value={formatTime(weeklyReport.weekly_total_time)}
-              subtitle={t('statCards.thisWeeksTotal')}
-              icon="⏱️"
-              color="#4f46e5"
-            />
-            <StatCard
-              title={t('statCards.activitiesCompleted')}
-              value={weeklyReport.weekly_total_activities}
-              subtitle={t('statCards.weeklyTasks')}
-              icon="✅"
-              color="#10b981"
-            />
-            <StatCard
-              title={t('statCards.averageDailyTime')}
-              value={formatTime(weeklyReport.average_daily_time)}
-              subtitle={t('statCards.dailyAverage')}
-              icon="📅"
-              color="#8b5cf6"
-            />
-            <StatCard
-              title={t('statCards.consistencyScore')}
-              value={`${weeklyReport.consistency_score}/10`}
-              subtitle={t('statCards.learningConsistency')}
-              icon="🔥"
-              color="#f59e0b"
-            />
-          </div>
-
-          <div className="content-grid">
-            <div className="insights-card">
-              <h3>💡 {t('weeklyReport.insights')}</h3>
-              <div className="insights-list">
-                {weeklyReport.weekly_insights.map((insight, index) => (
-                  <div key={index} className="insight-item">
-                    <span className="insight-icon">💡</span>
-                    <span>{insight}</span>
-                  </div>
-                ))}
+          {loading ? (
+            <div className="loading-container">
+              <div className="loading-spinner"></div>
+              <p>{t('common.loading')}</p>
+            </div>
+          ) : weeklyReport ? (
+            <>
+              <div className="report-header">
+                <h2>Weekly Report</h2>
+                <WeekNavigation
+                  weekStart={weeklyReport.week_start}
+                  weekEnd={weeklyReport.week_end}
+                  onPrevious={goToPreviousWeek}
+                  onNext={goToNextWeek}
+                  onToday={goToToday}
+                />
               </div>
+
+              <div className="stats-grid">
+                <StatCard
+                  title="Study Time"
+                  value={formatTime(weeklyReport.weekly_total_time)}
+                  subtitle="This week"
+                  icon="⏱️"
+                  color="#4f46e5"
+                />
+                <StatCard
+                  title="Completed"
+                  value={weeklyReport.weekly_total_activities}
+                  subtitle="Tasks done"
+                  icon="✅"
+                  color="#10b981"
+                />
+                <StatCard
+                  title="Daily Average"
+                  value={formatTime(weeklyReport.average_daily_time)}
+                  subtitle="Per day"
+                  icon="📅"
+                  color="#8b5cf6"
+                />
+                <StatCard
+                  title="Consistency"
+                  value={`${weeklyReport.consistency_score}/10`}
+                  subtitle="Learning streak"
+                  icon="🔥"
+                  color="#f59e0b"
+                />
+              </div>
+
+              {/* Daily Breakdown Chart */}
+              {weeklyReport.daily_breakdown && weeklyReport.daily_breakdown.length > 0 && (
+                <div className="daily-breakdown-section">
+                  <h3>📅 Daily Breakdown</h3>
+                  <div className="daily-breakdown-chart">
+                    {weeklyReport.daily_breakdown.map((day, index) => {
+                      const maxTime = Math.max(...weeklyReport.daily_breakdown.map(d => d.total_study_time), 1);
+                      const heightPercent = (day.total_study_time / maxTime) * 100;
+                      const dayName = new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' });
+                      const dayDate = new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      const isToday = day.date === new Date().toISOString().split('T')[0];
+                      
+                      return (
+                        <div key={index} className="daily-bar-container">
+                          <div className="daily-bar-wrapper">
+                            <div 
+                              className="daily-bar" 
+                              style={{ 
+                                height: `${Math.max(heightPercent, 5)}%`,
+                                backgroundColor: isToday ? '#4f46e5' : '#8b5cf6'
+                              }}
+                              title={`${formatTime(day.total_study_time)} - ${day.activities_completed} activities`}
+                            >
+                              <span className="daily-bar-value">{formatTime(day.total_study_time)}</span>
+                            </div>
+                          </div>
+                          <div className="daily-bar-label">
+                            <div className="day-name">{dayName}</div>
+                            <div className="day-date">{dayDate}</div>
+                            <div className="day-activities">{day.activities_completed} activities</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="content-grid">
+                <div className="insights-card">
+                  <h3>💡 Insights</h3>
+                  <div className="insights-list">
+                    {weeklyReport.weekly_insights && weeklyReport.weekly_insights.length > 0 ? (
+                      weeklyReport.weekly_insights.map((insight, index) => (
+                        <div key={index} className="insight-item">
+                          <span className="insight-icon">💡</span>
+                          <span>{insight}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="no-insights">
+                        <p>No insights available</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="progress-card">
+                  <h3>📊 Consistency</h3>
+                  <ProgressBar
+                    score={weeklyReport.consistency_score}
+                    color="#8b5cf6"
+                  />
+                  <p>Your learning consistency score for this week</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">📊</div>
+              <h3>No Data Available</h3>
+              <p>No weekly data found for this week</p>
             </div>
-            <div className="progress-card">
-              <h3>📊 {t('weeklyReport.consistencyProgress')}</h3>
-              <ProgressBar
-                score={weeklyReport.consistency_score}
-                color="#8b5cf6"
-              />
-              <p>{t('weeklyReport.consistencyDescription')}</p>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -2562,7 +2698,7 @@ const LearningReports = () => {
       {activeTab === 'analytics' && dailyReport && (
         <div className="report-container analytics-only">
           <div className="report-header">
-            <h2>{t('tabs.title')}</h2>
+            <h2>Analytics</h2>
             <DateNavigation
               date={currentDate}
               onPrevious={goToPreviousDay}

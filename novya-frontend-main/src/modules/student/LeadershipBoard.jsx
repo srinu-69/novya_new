@@ -15,6 +15,7 @@ const LeadershipBoard = () => {
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [currentUser, setCurrentUser] = useState(null);
   const [isOpen, setIsOpen] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [loading, setLoading] = useState(true);
 
   // Color scheme
@@ -28,45 +29,6 @@ const LeadershipBoard = () => {
 
   // Subjects - using translation keys
   const subjects = ['english', 'maths', 'science', 'social', 'computer'];
-
-  // Mock data with subjects
-  const mockUsers = [
-    {
-      id: 1,
-      name: t('leaderboard.studentNames.pavan', 'Pavan'),
-      avatar: "P",
-      subjects: { english: 100, maths: 80, science: 90, social: 70, computer: 50 },
-      total: 500, rank: 1, isCurrentUser: false
-    },
-    {
-      id: 2,
-      name: t('leaderboard.studentNames.naga', 'Naga'),
-      avatar: "N",
-      subjects: { english: 100, maths: 70, science: 95, social: 95, computer: 95 },
-      total: 480, rank: 2, isCurrentUser: false
-    },
-    {
-      id: 3,
-      name: t('leaderboard.studentNames.anand', 'Anand'),
-      avatar: "A",
-      subjects: { english: 90, maths: 70, science: 100, social: 85, computer: 90 },
-      total: 435, rank: 3, isCurrentUser: false
-    },
-    {
-      id: 4,
-      name: t('leaderboard.you', 'You'),
-      avatar: "Y",
-      subjects: { english: 90, maths: 90, science: 50, social: 80, computer: 85 },
-      total: 395, rank: 4, isCurrentUser: true
-    },
-    {
-      id: 5,
-      name: t('leaderboard.studentNames.sai', 'Sai'),
-      avatar: "S",
-      subjects: { english: 90, maths: 30, science: 50, social: 75, computer: 100 },
-      total: 325, rank: 5, isCurrentUser: false
-    }
-  ];
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -204,11 +166,29 @@ const LeadershipBoard = () => {
       sorted = [...filtered].sort((a, b) => b.total - a.total);
     }
 
-    // Assign ranks
-    const withRanks = sorted.map((user, index) => ({
-      ...user,
-      rank: index + 1
-    }));
+    // Assign ranks with proper tie handling
+    let currentRank = 1;
+    const withRanks = sorted.map((user, index) => {
+      // Get the score to compare (either subject score or total)
+      const userScore = selectedSubject !== 'all' ? user.subjects[selectedSubject] : user.total;
+      
+      // Check if previous user has the same score (tie)
+      if (index > 0) {
+        const prevScore = selectedSubject !== 'all' 
+          ? sorted[index - 1].subjects[selectedSubject] 
+          : sorted[index - 1].total;
+        if (userScore !== prevScore) {
+          // Different score, so increment rank
+          currentRank = index + 1;
+        }
+        // If same score, keep currentRank (tie)
+      }
+      
+      return {
+        ...user,
+        rank: currentRank
+      };
+    });
 
     // Apply top filter
     let finalFiltered;
@@ -219,6 +199,40 @@ const LeadershipBoard = () => {
     }
 
     setFilteredData(finalFiltered);
+
+    // Update current user's rank based on TOTAL SCORE from full leaderboard (not filtered)
+    // This ensures the rank shown in the user card is always based on total score ranking
+    if (leaderboardData.length > 0) {
+      // Sort full leaderboard by total score for rank calculation
+      const fullSortedByTotal = [...leaderboardData].sort((a, b) => b.total - a.total);
+      
+      // Assign ranks with proper tie handling for total score
+      let currentRank = 1;
+      const fullWithRanks = fullSortedByTotal.map((user, index) => {
+        if (index > 0 && user.total !== fullSortedByTotal[index - 1].total) {
+          currentRank = index + 1;
+        }
+        return {
+          ...user,
+          rank: currentRank
+        };
+      });
+      
+      // Find the current user in the full sorted list
+      const currentUserInFull = fullWithRanks.find(user => user.isCurrentUser);
+      if (currentUserInFull) {
+        // Update currentUser with the correct rank based on total score
+        setCurrentUser(prev => {
+          if (prev && prev.rank !== currentUserInFull.rank) {
+            return {
+              ...prev,
+              rank: currentUserInFull.rank
+            };
+          }
+          return prev;
+        });
+      }
+    }
   }, [searchTerm, activeFilter, selectedSubject, leaderboardData]);
 
   const getRankStyle = (rank) => {

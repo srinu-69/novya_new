@@ -2161,6 +2161,7 @@ const Home1 = () => {
   const [currentTopics, setCurrentTopics] = useState(topicsByClass['7']);
   const [isHovered, setIsHovered] = useState(null);
   const [quizData, setQuizData] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [mockTestData, setMockTestData] = useState(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -2217,6 +2218,7 @@ const Home1 = () => {
     setLearningStats(statsByClass[activeClass]);
     setCurrentCourse(coursesByClass[activeClass][0].title);
     setCurrentProgress(coursesByClass[activeClass][0].progress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClass, t]);
 
   useEffect(() => {
@@ -2267,72 +2269,187 @@ const Home1 = () => {
     }
   };
 
-  // Fetch quiz and mock test statistics
+  // Fetch quiz and mock test statistics - using shared cache from Career page for faster loading
   useEffect(() => {
+    const performanceCacheKey = 'career_performance_data';
+    const CACHE_DURATION = 120000; // 2 minutes cache (shared with Career page)
+    
+    const calculatePercentages = (performanceData) => {
+      // Calculate quiz percentage: (total_correct_answers / total_questions_answered) * 100
+      const quizPercentage = performanceData.total_questions_answered > 0
+        ? (performanceData.total_correct_answers / performanceData.total_questions_answered) * 100
+        : 0;
+      
+      // Calculate mock test percentage: (mock_test_correct_answers / mock_test_questions_answered) * 100
+      const mockTestPercentage = performanceData.mock_test_questions_answered > 0
+        ? (performanceData.mock_test_correct_answers / performanceData.mock_test_questions_answered) * 100
+        : 0;
+      
+      return { 
+        quizAvg: Math.round(quizPercentage * 10) / 10, // Round to 1 decimal place
+        mockTestAvg: Math.round(mockTestPercentage * 10) / 10 // Round to 1 decimal place
+      };
+    };
+    
+    const updateStatsWithAverages = (quizAvg, mockTestAvg) => {
+      setQuizData({ average_score: quizAvg });
+      // mockTestData is set for potential future use
+      setMockTestData({ average_score: mockTestAvg });
+      
+      // Update learning stats with real data
+      const updatedStats = [...statsByClass[activeClass]];
+      
+      // Update "Average Grade" to "Quiz Average" with real quiz data
+      const quizAverageIndex = updatedStats.findIndex(stat => stat.label === t('dashboard.stats.averageGrade'));
+      if (quizAverageIndex !== -1) {
+        updatedStats[quizAverageIndex] = {
+          ...updatedStats[quizAverageIndex],
+          label: 'Quiz Average',
+          value: Math.round(quizAvg * 10) / 10, // Round to 1 decimal place
+          icon: 'chart-line'
+        };
+      }
+      
+      // Update "Assignments Due" to "Mock Test Average" with real mock test data
+      const mockTestAverageIndex = updatedStats.findIndex(stat => stat.label === t('dashboard.stats.assignmentsDue'));
+      if (mockTestAverageIndex !== -1) {
+        updatedStats[mockTestAverageIndex] = {
+          ...updatedStats[mockTestAverageIndex],
+          label: 'Mock Test Average',
+          value: Math.round(mockTestAvg * 10) / 10, // Round to 1 decimal place
+          icon: 'clock',
+          max: 100
+        };
+      }
+      
+      setLearningStats(updatedStats);
+    };
+    
     const fetchQuizData = async () => {
       try {
-        console.log('🔍 Debug - Home page fetching performance data...');
-        const { getRecentQuizAttempts } = await import('../../utils/quizTracking');
-        const attemptsData = await getRecentQuizAttempts();
-        console.log('🔍 Debug - Attempts data received:', attemptsData);
+        // Check cache first (shared with Career page for faster loading)
+        const cacheTimestamp = localStorage.getItem(`${performanceCacheKey}_timestamp`);
+        const cachedData = localStorage.getItem(performanceCacheKey);
+        const now = Date.now();
         
-        if (attemptsData && attemptsData.attempts) {
-          const attempts = attemptsData.attempts;
+        // Use cached data if available and fresh (less than 2 minutes old)
+        if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < CACHE_DURATION) {
+          try {
+            const parsedCache = JSON.parse(cachedData);
+            if (parsedCache && parsedCache.total_quizzes_attempted !== undefined) {
+              console.log('✅ Home page using cached performance data for faster loading');
+              const { quizAvg, mockTestAvg } = calculatePercentages(parsedCache);
+              updateStatsWithAverages(quizAvg, mockTestAvg);
+              
+              // Fetch fresh data in background (non-blocking)
+              setTimeout(() => fetchFreshData(), 100);
+              return;
+            }
+          } catch (cacheError) {
+            console.warn('Cache parse error, fetching fresh data:', cacheError);
+          }
+        }
+        
+        // If no cache or cache expired, fetch fresh data
+        console.log('🔍 Home page fetching fresh performance data...');
+        const { getStudentPerformance } = await import('../../utils/quizTracking');
+        
+        // Determine child email for parent users
+        const userRole = localStorage.getItem('userRole');
+        const childEmail = userRole && userRole.toLowerCase() === 'parent' 
+          ? localStorage.getItem('childEmail') 
+          : null;
+        
+        // Fetch performance data (ALL quizzes, not just recent)
+        const performanceData = await Promise.race([
+          getStudentPerformance(childEmail),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Performance API timeout')), 5000)
+          )
+        ]);
+        
+        if (performanceData) {
+          // Calculate correct percentages
+          const { quizAvg, mockTestAvg } = calculatePercentages(performanceData);
           
-          // Calculate quiz average
-          const quizAttempts = attempts.filter(attempt => attempt.type === 'quiz');
-          const quizScores = quizAttempts.map(attempt => attempt.score || 0);
-          const quizAvg = quizScores.length > 0 ? quizScores.reduce((sum, score) => sum + score, 0) / quizScores.length : 0;
-          
-          // Calculate mock test average
-          const mockTestAttempts = attempts.filter(attempt => attempt.type === 'mock_test');
-          const mockTestScores = mockTestAttempts.map(attempt => attempt.score || 0);
-          const mockTestAvg = mockTestScores.length > 0 ? mockTestScores.reduce((sum, score) => sum + score, 0) / mockTestScores.length : 0;
-          
-          console.log('🔍 Debug - Quiz average:', quizAvg);
-          console.log('🔍 Debug - Mock test average:', mockTestAvg);
-          
-          setQuizData({ average_score: quizAvg });
-          setMockTestData({ average_score: mockTestAvg });
-          
-          // Update learning stats with real data
-          const updatedStats = [...statsByClass[activeClass]];
-          console.log('🔍 Debug - Original stats:', updatedStats);
-          
-          // Update "Average Grade" to "Quiz Average" with real quiz data
-          const quizAverageIndex = updatedStats.findIndex(stat => stat.label === t('dashboard.stats.averageGrade'));
-          console.log('🔍 Debug - Quiz average index:', quizAverageIndex);
-          if (quizAverageIndex !== -1) {
-            updatedStats[quizAverageIndex] = {
-              ...updatedStats[quizAverageIndex],
-              label: 'Quiz Average',
-              value: Math.round(quizAvg * 10) / 10, // Round to 1 decimal place
-              icon: 'chart-line'
+          // Cache the performance data (shared with Career page)
+          try {
+            const formattedPerformanceData = {
+              quiz_average_score: quizAvg,
+              mock_test_average_score: mockTestAvg,
+              total_quizzes_attempted: performanceData.total_quizzes_attempted || 0,
+              total_mock_tests_attempted: performanceData.total_mock_tests_attempted || 0,
+              total_questions_answered: performanceData.total_questions_answered || 0,
+              mock_test_questions_answered: performanceData.mock_test_questions_answered || 0,
+              total_correct_answers: performanceData.total_correct_answers || 0,
+              mock_test_correct_answers: performanceData.mock_test_correct_answers || 0
             };
-            console.log('🔍 Debug - Updated quiz stat:', updatedStats[quizAverageIndex]);
+            localStorage.setItem(performanceCacheKey, JSON.stringify(formattedPerformanceData));
+            localStorage.setItem(`${performanceCacheKey}_timestamp`, now.toString());
+          } catch (cacheError) {
+            console.warn('Failed to cache data:', cacheError);
           }
           
-          // Update "Assignments Due" to "Mock Test Average" with real mock test data
-          const mockTestAverageIndex = updatedStats.findIndex(stat => stat.label === t('dashboard.stats.assignmentsDue'));
-          console.log('🔍 Debug - Mock test average index:', mockTestAverageIndex);
-          if (mockTestAverageIndex !== -1) {
-            updatedStats[mockTestAverageIndex] = {
-              ...updatedStats[mockTestAverageIndex],
-              label: 'Mock Test Average',
-              value: Math.round(mockTestAvg * 10) / 10, // Round to 1 decimal place
-              icon: 'clock',
-              max: 100
-            };
-            console.log('🔍 Debug - Updated mock test stat:', updatedStats[mockTestAverageIndex]);
-          }
-          
-          console.log('🔍 Debug - Final updated stats:', updatedStats);
-          setLearningStats(updatedStats);
-        } else {
-          console.log('🔍 Debug - No performance data received');
+          updateStatsWithAverages(quizAvg, mockTestAvg);
         }
       } catch (error) {
-        console.error('❌ Error fetching quiz attempts data:', error);
+        console.error('❌ Error fetching quiz performance data:', error);
+        // If error, try to use cached data even if expired
+        try {
+          const cachedData = localStorage.getItem(performanceCacheKey);
+          if (cachedData) {
+            const parsedCache = JSON.parse(cachedData);
+            if (parsedCache && parsedCache.total_quizzes_attempted !== undefined) {
+              // Recalculate percentages from cached data
+              const { quizAvg, mockTestAvg } = calculatePercentages(parsedCache);
+              updateStatsWithAverages(quizAvg, mockTestAvg);
+            }
+          }
+        } catch (fallbackError) {
+          console.warn('Failed to use fallback cache:', fallbackError);
+        }
+      }
+    };
+    
+    // Function to fetch fresh data in background (non-blocking)
+    const fetchFreshData = async () => {
+      try {
+        const userRole = localStorage.getItem('userRole');
+        const childEmail = userRole && userRole.toLowerCase() === 'parent' 
+          ? localStorage.getItem('childEmail') 
+          : null;
+        
+        const { getStudentPerformance } = await import('../../utils/quizTracking');
+        const performanceData = await getStudentPerformance(childEmail);
+        
+        if (performanceData) {
+          // Calculate correct percentages
+          const { quizAvg, mockTestAvg } = calculatePercentages(performanceData);
+          
+          // Update cache (shared with Career page)
+          try {
+            const formattedPerformanceData = {
+              quiz_average_score: quizAvg,
+              mock_test_average_score: mockTestAvg,
+              total_quizzes_attempted: performanceData.total_quizzes_attempted || 0,
+              total_mock_tests_attempted: performanceData.total_mock_tests_attempted || 0,
+              total_questions_answered: performanceData.total_questions_answered || 0,
+              mock_test_questions_answered: performanceData.mock_test_questions_answered || 0,
+              total_correct_answers: performanceData.total_correct_answers || 0,
+              mock_test_correct_answers: performanceData.mock_test_correct_answers || 0
+            };
+            localStorage.setItem(performanceCacheKey, JSON.stringify(formattedPerformanceData));
+            localStorage.setItem(`${performanceCacheKey}_timestamp`, Date.now().toString());
+          } catch (cacheError) {
+            // Ignore cache errors
+          }
+          
+          // Update with fresh data
+          updateStatsWithAverages(quizAvg, mockTestAvg);
+        }
+      } catch (error) {
+        // Silently fail - we already have cached data
+        console.warn('Background data refresh failed:', error);
       }
     };
 
@@ -2340,15 +2457,15 @@ const Home1 = () => {
     
     // Refetch data when window regains focus (user returns to tab)
     const handleFocus = () => {
-      console.log('🔄 Window focused - refetching performance data...');
-      fetchQuizData();
+      console.log('🔄 Window focused - checking for fresh data...');
+      fetchFreshData();
     };
     
-    // Also refetch data every 30 seconds to ensure it's up to date
+    // Also refetch data every 2 minutes in background to ensure it's up to date (non-blocking)
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh - refetching performance data...');
-      fetchQuizData();
-    }, 30000);
+      console.log('🔄 Auto-refresh - checking for fresh data in background...');
+      fetchFreshData();
+    }, 120000); // 2 minutes - matches cache duration
     
     window.addEventListener('focus', handleFocus);
     
@@ -2391,12 +2508,6 @@ const Home1 = () => {
     }
   };
 
-  const hoverEffect = {
-    scale: 1.05,
-    boxShadow: "0 15px 30px -10px rgba(45, 93, 123, 0.4)",
-    transition: { duration: 0.3 }
-  };
-
   const cardHover = {
     scale: 1.03,
     boxShadow: "0 20px 40px -10px rgba(45, 93, 123, 0.3)",
@@ -2412,13 +2523,6 @@ const Home1 = () => {
     }
   };
 
-  const fadeIn = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { duration: 0.8 }
-    }
-  };
 
   const staggerContainer = {
     hidden: { opacity: 0 },

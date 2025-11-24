@@ -835,7 +835,7 @@ const TypingMaster = () => {
       // Ultimate fallback
       const ultimateFallback = "The quick brown fox jumps over the lazy dog. Practice typing regularly to improve your skills. Focus on accuracy and proper technique for best results. Consistent practice will make you a typing expert in no time.";
       setText(ultimateFallback);
-      setError(t('typing.aiUnavailable'));
+      setError('AI unavailable, using fallback lesson');
     } finally {
       resetTestState();
     }
@@ -863,7 +863,7 @@ const TypingMaster = () => {
 
   const completeTest = () => {
     if (input.length === 0) {
-      alert(t('typing.typeSomethingAlert'));
+      alert('Please type something first');
       return;
     }
     
@@ -944,7 +944,7 @@ const TypingMaster = () => {
 
   const handlePaste = (e) => {
     e.preventDefault();
-    alert(t('typing.pastingDisabled'));
+    alert('Pasting is disabled. Please type manually.');
   };
 
   const calculateLiveAccuracy = (typedText) => {
@@ -1018,7 +1018,7 @@ const TypingMaster = () => {
 
   const DifficultySelector = () => (
     <div className="mb-3">
-      <Form.Label className="fw-bold">{t('typing.selectDifficulty')}:</Form.Label>
+      <Form.Label className="fw-bold">Select Difficulty:</Form.Label>
       <div>
         {["Beginner", "Intermediate", "Advanced"].map((level) => (
           <Button
@@ -1029,7 +1029,7 @@ const TypingMaster = () => {
             onClick={() => setDifficulty(level)}
             disabled={loading}
           >
-            {t(`typing.levels.${level.toLowerCase()}`)}
+            {level}
           </Button>
         ))}
       </div>
@@ -1053,25 +1053,25 @@ const TypingMaster = () => {
           className="position-absolute top-0 start-0 m-3"
           onClick={() => window.history.back()}
         >
-          🔙 {t('typing.back')}
+          🔙 Back
         </Button>
 
         <div className="tutorial-content text-center text-light">
-          <h1 className="fw-bold mb-3">💡 {t('typing.welcomeTitle')}</h1>
+          <h1 className="fw-bold mb-3">💡 Typing Master</h1>
           <p className="lead mb-4">
-            {t('typing.welcomeSubtitle')}
+            Improve your typing speed and accuracy
           </p>
 
           <DifficultySelector />
 
           <ul className="tutorial-list mx-auto">
-            <li>{t('typing.tip1')}</li>
-            <li>{t('typing.tip2')}</li>
-            <li>{t('typing.tip3')}</li>
-            <li>{t('typing.tip4')}</li>
-            <li>{t('typing.tip5')}</li>
-            <li>{t('typing.tip6')}</li>
-            <li>{t('typing.tip7')}</li>
+            <li>Keep your fingers on the home row</li>
+            <li>Focus on accuracy before speed</li>
+            <li>Practice regularly for best results</li>
+            <li>Don't look at the keyboard</li>
+            <li>Maintain good posture</li>
+            <li>Take breaks to avoid strain</li>
+            <li>Start slow and build up gradually</li>
           </ul>
 
           <div className="mt-5">
@@ -1081,7 +1081,7 @@ const TypingMaster = () => {
               className="px-4 py-2 start-btn"
               onClick={() => setShowTutorial(false)}
             >
-              🚀 {t('typing.startButton')}
+              🚀 Start
             </Button>
           </div>
         </div>
@@ -1091,38 +1091,38 @@ const TypingMaster = () => {
 
   const TypingResult = ({ accuracy, speed, onRestart }) => {
     let message = "";
-    if (accuracy >= 95 && speed >= 60) message = t('typing.results.excellent');
-    else if (accuracy >= 85) message = t('typing.results.great');
-    else if (accuracy >= 70) message = t('typing.results.good');
-    else message = t('typing.results.keepPracticing');
+    if (accuracy >= 95 && speed >= 60) message = "Excellent work!";
+    else if (accuracy >= 85) message = "Great job!";
+    else if (accuracy >= 70) message = "Good effort!";
+    else message = "Keep practicing!";
 
     return (
       <div className="vh-100 d-flex flex-column justify-content-center align-items-center bg-light">
         <Card className="p-4 shadow-lg border-0" style={{ width: "90%", maxWidth: "800px" }}>
           <div className="text-center">
-            <h4 className="fw-bold text-success mb-3">🎯 {t('typing.results.title')}</h4>
+            <h4 className="fw-bold text-success mb-3">🎯 Results</h4>
             <Row className="justify-content-center mb-3">
               <Col md={4}>
                 <Card className="p-3 shadow-sm border-0 bg-primary text-black">
-                  <h5>{t('typing.results.speed')}</h5>
+                  <h5>Speed</h5>
                   <h2>{speed}</h2>
-                  <p className="small">{t('typing.results.wpm')}</p>
+                  <p className="small">WPM</p>
                 </Card>
               </Col>
               <Col md={4}>
                 <Card className={`p-3 shadow-sm border-0 ${
                   accuracy >= 90 ? "bg-success" : accuracy >= 80 ? "bg-warning" : "bg-danger"
                 } text-black`}>
-                  <h5>{t('typing.results.accuracy')}</h5>
+                  <h5>Accuracy</h5>
                   <h2>{accuracy.toFixed(1)}%</h2>
-                  <p className="small">{t('typing.results.accuracyDesc')}</p>
+                  <p className="small">Correct characters</p>
                 </Card>
               </Col>
               <Col md={4}>
                 <Card className="p-3 shadow-sm border-0 bg-info text-black">
-                  <h5>{t('typing.results.keystrokes')}</h5>
+                  <h5>Keystrokes</h5>
                   <h2>{totalKeystrokes}</h2>
-                  <p className="small">{t('typing.results.keystrokesDesc', { correct: correctKeystrokes })}</p>
+                  <p className="small">{correctKeystrokes} correct</p>
                 </Card>
               </Col>
             </Row>
@@ -1132,25 +1132,25 @@ const TypingMaster = () => {
             </Alert>
 
             <div className="text-start mx-auto mb-4" style={{ maxWidth: "600px" }}>
-              <h6 className="fw-bold">📊 {t('typing.results.improvementTips')}:</h6>
+              <h6 className="fw-bold">📊 Tips:</h6>
               <ul className="mb-0">
-                <li>{t('typing.results.tip1')}</li>
-                <li>{t('typing.results.tip2')}</li>
-                <li>{t('typing.results.tip3')}</li>
-                <li>{t('typing.results.tip4')}</li>
-                <li>{t('typing.results.tip5')}</li>
+                <li>Practice daily for consistent improvement</li>
+                <li>Focus on accuracy first, speed will follow</li>
+                <li>Use proper finger placement on home row</li>
+                <li>Take breaks to avoid fatigue</li>
+                <li>Challenge yourself with harder levels</li>
               </ul>
             </div>
 
             <div className="mt-3">
               <Button variant="success" className="me-2 px-4" onClick={onRestart}>
-                🔁 {t('typing.results.tryAgain')}
+                🔁 Try Again
               </Button>
               <Button 
                 variant="outline-secondary" 
                 onClick={() => setShowTutorial(true)}
               >
-                📚 {t('typing.backToInstructions')}
+                📚 Back
               </Button>
             </div>
           </div>
@@ -1172,23 +1172,23 @@ const TypingMaster = () => {
         className="position-absolute top-0 start-0 m-3"
         onClick={() => setShowTutorial(true)}
       >
-        🔙 {t('typing.backToInstructions')}
+        🔙 Back
       </Button>
 
       <div className="text-center mb-3">
-        <h2>⌨️ {t('typing.title')}</h2>
-        <h5 className="text-primary mt-2">⏱ {t('typing.timeLeft')}: {timeLeft}s</h5>
+        <h2>⌨️ Typing Master</h2>
+        <h5 className="text-primary mt-2">⏱ Time Left: {timeLeft}s</h5>
         <ProgressBar
           now={(timeLeft / 60) * 100}
           variant={timeLeft > 20 ? "success" : timeLeft > 10 ? "warning" : "danger"}
           style={{ width: "300px", margin: "0 auto" }}
         />
         <div className="mt-2">
-          <Badge bg="info">{t('typing.liveWPM')}: {liveWPM}</Badge>{" "}
+          <Badge bg="info">WPM: {liveWPM}</Badge>{" "}
           <Badge bg={accuracy >= 90 ? "success" : accuracy >= 80 ? "warning" : "danger"}>
-            {t('typing.accuracy')}: {accuracy}%
+            Accuracy: {accuracy}%
           </Badge>{" "}
-          <Badge bg="secondary">{t('typing.level')}: {t(`typing.levels.${difficulty.toLowerCase()}`)}</Badge>
+          <Badge bg="secondary">Level: {difficulty}</Badge>
         </div>
       </div>
 
@@ -1198,7 +1198,7 @@ const TypingMaster = () => {
       >
         {loading && (
           <Alert variant="info" className="text-center">
-            ⏳ {t('typing.generatingLesson')}
+            ⏳ Generating lesson...
           </Alert>
         )}
         
@@ -1221,7 +1221,7 @@ const TypingMaster = () => {
           value={input}
           onChange={handleChange}
           onPaste={handlePaste}
-          placeholder={isRunning ? t('typing.placeholderRunning') : t('typing.placeholderStart')}
+          placeholder={isRunning ? "Keep typing..." : "Start typing here..."}
           disabled={loading}
           autoFocus
         />
@@ -1233,10 +1233,10 @@ const TypingMaster = () => {
             onClick={() => setIsRunning((r) => !r)}
             disabled={loading}
           >
-            {isRunning ? "⏸ " + t('typing.pause') : "▶️ " + t('typing.start')}
+            {isRunning ? "⏸ Pause" : "▶️ Start"}
           </Button>
           <Button variant="outline-info" className="me-2 mb-2" onClick={forceNewRandomLesson} disabled={loading}>
-            🎲 {t('typing.randomLesson')}
+            🎲 New Lesson
           </Button>
           <Button 
             variant="success" 
@@ -1244,11 +1244,11 @@ const TypingMaster = () => {
             onClick={completeTest}
             disabled={loading || input.length === 0}
           >
-            {t('typing.completeTest')}
+            Complete
           </Button>
         </div>
         <div className="text-muted small">
-          💡 {t('typing.completeTip')}
+          💡 Press Ctrl+Enter to complete test
         </div>
       </Card>
 

@@ -63,11 +63,12 @@ export const calculateQuizStats = (quizQuestions, userAnswers) => {
 
 /**
  * Get student performance data from database
+ * @param {string} childEmail - Optional child email for parent users
  */
-export const getStudentPerformance = async () => {
+export const getStudentPerformance = async (childEmail) => {
   try {
     console.log('🔍 Fetching student performance from database...');
-    const response = await quizTrackingAPI.getPerformance();
+    const response = await quizTrackingAPI.getPerformance(childEmail);
     console.log('✅ Student performance fetched:', response);
     return response;
   } catch (error) {

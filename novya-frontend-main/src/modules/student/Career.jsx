@@ -71,11 +71,12 @@ const Career = () => {
     }
   }, []);
 
-  // Fetch dynamic quiz tracking data (optimized - single API call with timeout and caching)
+  // Fetch dynamic quiz tracking data (optimized - using performance API for accurate totals)
   useEffect(() => {
     let isMounted = true;
-    const cacheKey = 'career_quiz_data';
-    const CACHE_DURATION = 60000; // 1 minute cache
+    const performanceCacheKey = 'career_performance_data';
+    const recentCacheKey = 'career_recent_attempts';
+    const CACHE_DURATION = 120000; // 2 minutes cache
     
     const fetchQuizData = async () => {
       try {
@@ -83,22 +84,25 @@ const Career = () => {
         setLoadingQuizData(true);
         
         // Check cache first for faster loading
-        const cacheTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
-        const cachedData = localStorage.getItem(cacheKey);
+        const performanceCacheTimestamp = localStorage.getItem(`${performanceCacheKey}_timestamp`);
+        const cachedPerformanceData = localStorage.getItem(performanceCacheKey);
         const now = Date.now();
         
-        // Use cached data if available and fresh (less than 1 minute old)
-        if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < CACHE_DURATION) {
+        // Use cached performance data if available and fresh
+        if (cachedPerformanceData && performanceCacheTimestamp && (now - parseInt(performanceCacheTimestamp)) < CACHE_DURATION) {
           try {
-            const parsedCache = JSON.parse(cachedData);
-            if (parsedCache && parsedCache.attempts) {
-              console.log('✅ Using cached quiz data for faster loading');
+            const parsedCache = JSON.parse(cachedPerformanceData);
+            if (parsedCache && parsedCache.total_quizzes_attempted !== undefined) {
+              console.log('✅ Career page using cached performance data for faster loading');
               if (isMounted) {
-                calculateAndSetPerformanceData(parsedCache.attempts);
+                setQuizPerformanceData(parsedCache);
                 setLoadingQuizData(false);
               }
               // Still fetch fresh data in background but don't block UI
               setTimeout(() => fetchFreshData(isMounted), 100);
+              
+              // Fetch recent attempts separately for display
+              fetchRecentAttempts(isMounted);
               return;
             }
           } catch (cacheError) {
@@ -108,41 +112,88 @@ const Career = () => {
         
         // Determine child email for parent users
         const userRole = localStorage.getItem('userRole');
-        const childEmail =
-          userRole && userRole.toLowerCase() === 'parent'
-            ? localStorage.getItem('childEmail')
-            : null;
-
-        // Reduced limit for faster API response (from 10 to 5)
-        const recentAttemptsRes = await Promise.race([
-          getRecentQuizAttempts(5, childEmail),
+        const childEmail = userRole && userRole.toLowerCase() === 'parent'
+          ? localStorage.getItem('childEmail')
+          : null;
+        
+        // Fetch performance data (ALL quizzes, not just recent)
+        const performanceData = await Promise.race([
+          getStudentPerformance(childEmail),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('API timeout')), 5000) // 5 second timeout
+            setTimeout(() => reject(new Error('Performance API timeout')), 5000)
           )
         ]);
         
         if (!isMounted) return;
         
-        // Calculate performance data from recent attempts
-        if (recentAttemptsRes && recentAttemptsRes.attempts) {
-          const attempts = recentAttemptsRes.attempts;
+        if (performanceData) {
+          // Calculate correct percentages for display
+          // Quiz: (total_correct_answers / total_questions_answered) * 100
+          const quizPercentage = performanceData.total_questions_answered > 0
+            ? (performanceData.total_correct_answers / performanceData.total_questions_answered) * 100
+            : 0;
           
-          // Cache the data for future loads
+          // Mock Test: (mock_test_correct_answers / mock_test_questions_answered) * 100
+          const mockTestPercentage = performanceData.mock_test_questions_answered > 0
+            ? (performanceData.mock_test_correct_answers / performanceData.mock_test_questions_answered) * 100
+            : 0;
+          
+          // Extract and format performance data with correct percentages
+          const formattedPerformanceData = {
+            quiz_average_score: Math.round(quizPercentage * 10) / 10, // Round to 1 decimal place
+            mock_test_average_score: Math.round(mockTestPercentage * 10) / 10, // Round to 1 decimal place
+            total_quizzes_attempted: performanceData.total_quizzes_attempted || 0,
+            total_mock_tests_attempted: performanceData.total_mock_tests_attempted || 0,
+            total_questions_answered: performanceData.total_questions_answered || 0,
+            mock_test_questions_answered: performanceData.mock_test_questions_answered || 0,
+            overall_average_score: performanceData.overall_average_score || 0,
+            // Store raw data for reference
+            total_correct_answers: performanceData.total_correct_answers || 0,
+            mock_test_correct_answers: performanceData.mock_test_correct_answers || 0
+          };
+          
+          // Cache the performance data
           try {
-            localStorage.setItem(cacheKey, JSON.stringify(recentAttemptsRes));
-            localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
+            localStorage.setItem(performanceCacheKey, JSON.stringify(formattedPerformanceData));
+            localStorage.setItem(`${performanceCacheKey}_timestamp`, now.toString());
           } catch (cacheError) {
-            console.warn('Failed to cache data:', cacheError);
+            console.warn('Failed to cache performance data:', cacheError);
           }
           
-          calculateAndSetPerformanceData(attempts);
-        } else {
-          setRecentQuizAttempts([]);
+          setQuizPerformanceData(formattedPerformanceData);
+          
+          // Create statistics data object
+          const statisticsData = {
+            total_attempts: (performanceData.total_quizzes_attempted || 0) + (performanceData.total_mock_tests_attempted || 0),
+            quiz_count: performanceData.total_quizzes_attempted || 0,
+            mock_test_count: performanceData.total_mock_tests_attempted || 0,
+            average_score: formattedPerformanceData.overall_average_score
+          };
+          setQuizStatisticsData(statisticsData);
         }
+        
+        // Fetch recent attempts separately for display (non-blocking)
+        fetchRecentAttempts(isMounted);
+        
       } catch (error) {
-        console.error('❌ Error fetching quiz data:', error);
-        // Don't show error to user, just use context data
+        console.error('❌ Error fetching quiz performance data:', error);
+        // Try to use cached data even if expired as fallback
         if (isMounted) {
+          try {
+            const cachedData = localStorage.getItem(performanceCacheKey);
+            if (cachedData) {
+              const parsedCache = JSON.parse(cachedData);
+              if (parsedCache && parsedCache.total_quizzes_attempted !== undefined) {
+                console.log('⚠️ Using expired cache as fallback');
+                setQuizPerformanceData(parsedCache);
+                setLoadingQuizData(false);
+                fetchRecentAttempts(isMounted);
+                return;
+              }
+            }
+          } catch (fallbackError) {
+            console.warn('Failed to use fallback cache:', fallbackError);
+          }
           setQuizPerformanceData(null);
           setQuizStatisticsData(null);
           setRecentQuizAttempts([]);
@@ -154,81 +205,155 @@ const Career = () => {
       }
     };
     
-    // Helper function to calculate performance data (extracted for reuse)
-    const calculateAndSetPerformanceData = (attempts) => {
-      // Single pass through attempts array (more efficient)
-      let quizAttempts = [];
-      let mockTestAttempts = [];
-      let quizTotal = 0;
-      let mockTestTotal = 0;
-      let quizScoreSum = 0;
-      let mockTestScoreSum = 0;
-      
-      for (const attempt of attempts) {
-        if (attempt.type === 'quiz') {
-          quizAttempts.push(attempt);
-          quizTotal += attempt.total_questions || 0;
-          quizScoreSum += attempt.score || 0;
-        } else if (attempt.type === 'mock_test') {
-          mockTestAttempts.push(attempt);
-          mockTestTotal += attempt.total_questions || 0;
-          mockTestScoreSum += attempt.score || 0;
+    // Function to fetch recent attempts for display (separate from performance data)
+    const fetchRecentAttempts = async (mounted) => {
+      try {
+        const userRole = localStorage.getItem('userRole');
+        const childEmail = userRole && userRole.toLowerCase() === 'parent'
+          ? localStorage.getItem('childEmail')
+          : null;
+        
+        // Check cache for recent attempts
+        const recentCacheTimestamp = localStorage.getItem(`${recentCacheKey}_timestamp`);
+        const cachedRecentData = localStorage.getItem(recentCacheKey);
+        const now = Date.now();
+        
+        if (cachedRecentData && recentCacheTimestamp && (now - parseInt(recentCacheTimestamp)) < CACHE_DURATION) {
+          try {
+            const parsedCache = JSON.parse(cachedRecentData);
+            if (parsedCache && parsedCache.attempts) {
+              if (mounted) {
+                setRecentQuizAttempts(parsedCache.attempts);
+              }
+              // Fetch fresh in background
+              setTimeout(() => fetchFreshRecentAttempts(mounted), 100);
+              return;
+            }
+          } catch (cacheError) {
+            // Continue to fetch fresh
+          }
+        }
+        
+        // Fetch recent attempts (for display only, not for calculations)
+        const recentAttemptsRes = await Promise.race([
+          getRecentQuizAttempts(10, childEmail), // Get 10 recent for display
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Recent attempts timeout')), 3000)
+          )
+        ]);
+        
+        if (mounted && recentAttemptsRes && recentAttemptsRes.attempts) {
+          // Cache recent attempts
+          try {
+            localStorage.setItem(recentCacheKey, JSON.stringify(recentAttemptsRes));
+            localStorage.setItem(`${recentCacheKey}_timestamp`, Date.now().toString());
+          } catch (cacheError) {
+            // Ignore cache errors
+          }
+          
+          setRecentQuizAttempts(recentAttemptsRes.attempts);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch recent attempts:', error);
+        // Try expired cache
+        try {
+          const cachedData = localStorage.getItem(recentCacheKey);
+          if (cachedData) {
+            const parsedCache = JSON.parse(cachedData);
+            if (parsedCache && parsedCache.attempts && mounted) {
+              setRecentQuizAttempts(parsedCache.attempts);
+            }
+          }
+        } catch (fallbackError) {
+          // Ignore
         }
       }
-      
-      const quizAvg = quizAttempts.length > 0 ? quizScoreSum / quizAttempts.length : 0;
-      const mockTestAvg = mockTestAttempts.length > 0 ? mockTestScoreSum / mockTestAttempts.length : 0;
-      
-      // Create performance data object
-      const performanceData = {
-        quiz_average_score: quizAvg,
-        mock_test_average_score: mockTestAvg,
-        total_quizzes_attempted: quizAttempts.length,
-        total_mock_tests_attempted: mockTestAttempts.length,
-        total_questions_answered: quizTotal,
-        mock_test_questions_answered: mockTestTotal,
-        overall_average_score: (quizAvg + mockTestAvg) / 2
-      };
-      
-      // Create statistics data object
-      const statisticsData = {
-        total_attempts: attempts.length,
-        quiz_count: quizAttempts.length,
-        mock_test_count: mockTestAttempts.length,
-        average_score: performanceData.overall_average_score
-      };
-      
-      setQuizPerformanceData(performanceData);
-      setQuizStatisticsData(statisticsData);
-      setRecentQuizAttempts(attempts);
     };
     
     // Function to fetch fresh data in background (non-blocking)
     const fetchFreshData = async (mounted) => {
       try {
         const userRole = localStorage.getItem('userRole');
-        const childEmail =
-          userRole && userRole.toLowerCase() === 'parent'
-            ? localStorage.getItem('childEmail')
-            : null;
+        const childEmail = userRole && userRole.toLowerCase() === 'parent'
+          ? localStorage.getItem('childEmail')
+          : null;
         
-        const recentAttemptsRes = await getRecentQuizAttempts(5, childEmail);
+        const performanceData = await getStudentPerformance(childEmail);
         
-        if (mounted && recentAttemptsRes && recentAttemptsRes.attempts) {
+        if (mounted && performanceData) {
+          // Calculate correct percentages for display
+          // Quiz: (total_correct_answers / total_questions_answered) * 100
+          const quizPercentage = performanceData.total_questions_answered > 0
+            ? (performanceData.total_correct_answers / performanceData.total_questions_answered) * 100
+            : 0;
+          
+          // Mock Test: (mock_test_correct_answers / mock_test_questions_answered) * 100
+          const mockTestPercentage = performanceData.mock_test_questions_answered > 0
+            ? (performanceData.mock_test_correct_answers / performanceData.mock_test_questions_answered) * 100
+            : 0;
+          
+          const formattedPerformanceData = {
+            quiz_average_score: Math.round(quizPercentage * 10) / 10, // Round to 1 decimal place
+            mock_test_average_score: Math.round(mockTestPercentage * 10) / 10, // Round to 1 decimal place
+            total_quizzes_attempted: performanceData.total_quizzes_attempted || 0,
+            total_mock_tests_attempted: performanceData.total_mock_tests_attempted || 0,
+            total_questions_answered: performanceData.total_questions_answered || 0,
+            mock_test_questions_answered: performanceData.mock_test_questions_answered || 0,
+            overall_average_score: performanceData.overall_average_score || 0,
+            // Store raw data for reference
+            total_correct_answers: performanceData.total_correct_answers || 0,
+            mock_test_correct_answers: performanceData.mock_test_correct_answers || 0
+          };
+          
           // Update cache
           try {
-            localStorage.setItem(cacheKey, JSON.stringify(recentAttemptsRes));
-            localStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+            localStorage.setItem(performanceCacheKey, JSON.stringify(formattedPerformanceData));
+            localStorage.setItem(`${performanceCacheKey}_timestamp`, Date.now().toString());
           } catch (cacheError) {
             // Ignore cache errors
           }
           
-          // Update with fresh data
-          calculateAndSetPerformanceData(recentAttemptsRes.attempts);
+          setQuizPerformanceData(formattedPerformanceData);
+          
+          const statisticsData = {
+            total_attempts: (performanceData.total_quizzes_attempted || 0) + (performanceData.total_mock_tests_attempted || 0),
+            quiz_count: performanceData.total_quizzes_attempted || 0,
+            mock_test_count: performanceData.total_mock_tests_attempted || 0,
+            average_score: formattedPerformanceData.overall_average_score
+          };
+          setQuizStatisticsData(statisticsData);
         }
       } catch (error) {
-        // Silently fail - we already have cached/context data
-        console.warn('Background data refresh failed:', error);
+        console.warn('Background performance data refresh failed:', error);
+      }
+    };
+    
+    const fetchFreshRecentAttempts = async (mounted) => {
+      try {
+        const userRole = localStorage.getItem('userRole');
+        const childEmail = userRole && userRole.toLowerCase() === 'parent'
+          ? localStorage.getItem('childEmail')
+          : null;
+        
+        const recentAttemptsRes = await Promise.race([
+          getRecentQuizAttempts(10, childEmail),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Background recent attempts timeout')), 3000)
+          )
+        ]);
+        
+        if (mounted && recentAttemptsRes && recentAttemptsRes.attempts) {
+          try {
+            localStorage.setItem(recentCacheKey, JSON.stringify(recentAttemptsRes));
+            localStorage.setItem(`${recentCacheKey}_timestamp`, Date.now().toString());
+          } catch (cacheError) {
+            // Ignore
+          }
+          
+          setRecentQuizAttempts(recentAttemptsRes.attempts);
+        }
+      } catch (error) {
+        console.warn('Background recent attempts refresh failed:', error);
       }
     };
 
