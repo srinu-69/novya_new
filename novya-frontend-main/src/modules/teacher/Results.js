@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Studentresults from './Studentresults';
 import Sidebar from './Sidebar';
+import { djangoAPI, API_CONFIG } from '../../config/api';
 
 const Results = () => {
   const { t } = useTranslation();
@@ -14,6 +15,8 @@ const Results = () => {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [currentView, setCurrentView] = useState('list');
+  const [studentsData, setStudentsData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Color variables using your exact codes
   const colors = {
@@ -33,8 +36,86 @@ const Results = () => {
     borderColor: 'rgba(0, 0, 0, 0.1)'
   };
 
-  // Mock student data
-  const studentsData = [
+  // Fetch students from teacher's school and their quiz/mock test scores
+  useEffect(() => {
+    const fetchStudentsData = async () => {
+      try {
+        setLoading(true);
+        // Fetch students from teacher's school
+        const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_STUDENTS);
+        console.log('📊 Teacher students response:', response);
+        const students = response.students || [];
+        console.log(`📊 Found ${students.length} students`);
+        
+        // Process students data - scores are already included from backend
+        const studentsWithScores = students.map((student) => {
+          // Get initials from name
+          const firstName = student.user_info?.firstname || student.first_name || '';
+          const lastName = student.user_info?.lastname || student.last_name || '';
+          const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || 'NA';
+          
+          // Debug logging for scores - log the raw data first
+          console.log(`📊 RAW Student data for ${student.student_id}:`, JSON.stringify(student, null, 2));
+          console.log(`📊 Student ${student.student_id} (${student.student_username || firstName}):`, {
+            quiz_score: student.quiz_score,
+            quiz_score_type: typeof student.quiz_score,
+            mock_score: student.mock_score,
+            mock_score_type: typeof student.mock_score,
+            average_score: student.average_score,
+            average_score_type: typeof student.average_score,
+            quiz_attempts: student.quiz_attempts_count,
+            mock_attempts: student.mock_attempts_count
+          });
+          
+          // Parse scores more carefully
+          const quizScore = student.quiz_score !== null && student.quiz_score !== undefined 
+            ? (typeof student.quiz_score === 'string' ? parseFloat(student.quiz_score) : Number(student.quiz_score))
+            : null;
+          const mockScore = student.mock_score !== null && student.mock_score !== undefined
+            ? (typeof student.mock_score === 'string' ? parseFloat(student.mock_score) : Number(student.mock_score))
+            : null;
+          const averageScore = student.average_score !== null && student.average_score !== undefined
+            ? (typeof student.average_score === 'string' ? parseFloat(student.average_score) : Number(student.average_score))
+            : null;
+          
+          console.log(`📊 PARSED scores for ${student.student_id}: quiz=${quizScore}, mock=${mockScore}, avg=${averageScore}`);
+          
+          return {
+            id: student.student_id,
+            student_id: student.student_id,
+            initials: initials,
+            name: `${firstName} ${lastName}`.trim() || 'Unknown',
+            email: student.user_info?.email || student.student_email || '',
+            quizScore: quizScore,
+            mockScore: mockScore,
+            averageScore: averageScore,
+            quizAttempts: student.quiz_attempts_count || 0,
+            mockAttempts: student.mock_attempts_count || 0,
+            subjectPerformance: student.subject_performance || student.subjectPerformance || {},
+            course: student.profile?.grade || 'General',
+            enrollmentDate: student.created_at ? new Date(student.created_at).toISOString().split('T')[0] : null,
+            quizCompletionDate: student.quiz_completion_date || null,
+            mockCompletionDate: student.mock_completion_date || null,
+            quizTimeMinutes: student.quiz_time_minutes || 0,
+            mockTimeMinutes: student.mock_time_minutes || 0
+          };
+        });
+        
+        console.log('📊 Processed students with scores:', studentsWithScores);
+        setStudentsData(studentsWithScores);
+      } catch (error) {
+        console.error('❌ Error fetching students data:', error);
+        setStudentsData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchStudentsData();
+  }, []);
+  
+  // Legacy mock data (kept for reference, but not used)
+  const mockStudentsData = [
     {
       id: 1, initials: "JD", name: "John Doe", email: "john@example.com",
       enrollmentDate: "2024-01-15", course: "General", avatarColor: "avatar-blue",
@@ -171,52 +252,27 @@ const Results = () => {
   const exportToCSV = () => {
     // Prepare CSV headers
     const headers = [
-      t('common.studentId'),
-      t('common.name'),
-      t('common.email'),
-      t('common.enrollmentDate'),
-      t('common.course'),
-      t('subjects.mathematics') + ' ' + t('common.score'),
-      t('subjects.english') + ' ' + t('common.score'),
-      t('subjects.socialStudies') + ' ' + t('common.score'),
-      t('subjects.science') + ' ' + t('common.score'),
-      t('subjects.computer') + ' ' + t('common.score'),
-      t('studentResults.overallAverage'),
-      t('studentResults.quizStatus'),
-      t('studentResults.quizScore'),
-      t('studentResults.quizDate'),
-      t('studentResults.quizAttempts'),
-      t('studentResults.mockTestStatus'),
-      t('studentResults.mockTestScore'),
-      t('studentResults.mockTestDate'),
-      t('studentResults.mockTestAttempts')
+      'Student ID',
+      'Name',
+      'Email',
+      'Quiz Score',
+      'Mock Score',
+      'Average Score',
+      'Quiz Attempts',
+      'Mock Attempts'
     ];
 
     // Prepare CSV data
     const csvData = studentsData.map(student => {
-      const subjectScores = Object.values(student.subjects);
-      const averageScore = subjectScores.reduce((acc, subject) => acc + subject.score, 0) / subjectScores.length;
-      
       return [
-        student.id,
+        student.student_id || student.id,
         `"${student.name}"`,
         `"${student.email}"`,
-        student.enrollmentDate,
-        student.course,
-        student.subjects.mathematics.score,
-        student.subjects.english.score,
-        student.subjects.socialStudies.score,
-        student.subjects.science.score,
-        student.subjects.computer.score,
-        averageScore.toFixed(2),
-        student.quiz.status,
-        student.quiz.score || 'N/A',
-        student.quiz.date || 'N/A',
-        student.quiz.attempts || 'N/A',
-        student.mocktest.status,
-        student.mocktest.score || 'N/A',
-        student.mocktest.date || 'N/A',
-        student.mocktest.attempts || 'N/A'
+        student.quizScore !== null ? student.quizScore : 'N/A',
+        student.mockScore !== null ? student.mockScore : 'N/A',
+        student.averageScore !== null ? student.averageScore.toFixed(2) : 'N/A',
+        student.quizAttempts || 0,
+        student.mockAttempts || 0
       ];
     });
 
@@ -262,24 +318,23 @@ const Results = () => {
   const calculateSummaryStats = () => {
     const totalStudents = studentsData.length;
     
-    const quizCompleted = studentsData.filter(student => student.quiz.status === 'complete').length;
+    const quizCompleted = studentsData.filter(student => student.quizScore !== null).length;
     const quizPending = totalStudents - quizCompleted;
     
-    const mocktestCompleted = studentsData.filter(student => student.mocktest.status === 'complete').length;
+    const mocktestCompleted = studentsData.filter(student => student.mockScore !== null).length;
     const mocktestPending = totalStudents - mocktestCompleted;
     
     const totalQuizScore = studentsData
-      .filter(student => student.quiz.status === 'complete')
-      .reduce((sum, student) => sum + student.quiz.score, 0);
+      .filter(student => student.quizScore !== null)
+      .reduce((sum, student) => sum + student.quizScore, 0);
     const averageQuizScore = quizCompleted > 0 ? Math.round(totalQuizScore / quizCompleted) : 0;
     
-    const allSubjectScores = studentsData.flatMap(student => 
-      Object.values(student.subjects)
-        .filter(subject => subject.status === 'complete')
-        .map(subject => subject.score)
-    );
-    const classAverage = allSubjectScores.length > 0 
-      ? Math.round(allSubjectScores.reduce((sum, score) => sum + score, 0) / allSubjectScores.length)
+    // Calculate class average from quiz and mock scores
+    const allScores = studentsData
+      .filter(student => student.averageScore !== null)
+      .map(student => student.averageScore);
+    const classAverage = allScores.length > 0 
+      ? Math.round(allScores.reduce((sum, score) => sum + score, 0) / allScores.length)
       : 0;
 
     return {
@@ -492,43 +547,45 @@ const Results = () => {
   const AnalyticsView = () => {
     const { t } = useTranslation();
     
-    // Calculate subject-wise average scores
+    // Calculate subject-wise average scores (using quiz and mock scores)
     const calculateSubjectAverages = () => {
-      const subjects = ['mathematics', 'english', 'socialStudies', 'science', 'computer'];
-      const averages = {};
+      // Since we don't have subject-wise breakdown, we'll show overall performance metrics
+      // Return empty object or use quiz/mock averages as placeholders
+      const quizScores = studentsData
+        .filter(student => student.quizScore !== null)
+        .map(student => student.quizScore);
       
-      subjects.forEach(subject => {
-        const scores = studentsData
-          .filter(student => student.subjects[subject]?.status === 'complete')
-          .map(student => student.subjects[subject].score);
-        
-        if (scores.length > 0) {
-          const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-          averages[subject] = Math.round(average);
-        } else {
-          averages[subject] = 0;
-        }
-      });
+      const mockScores = studentsData
+        .filter(student => student.mockScore !== null)
+        .map(student => student.mockScore);
       
-      return averages;
+      const averageQuiz = quizScores.length > 0 
+        ? Math.round(quizScores.reduce((sum, score) => sum + score, 0) / quizScores.length)
+        : 0;
+      
+      const averageMock = mockScores.length > 0
+        ? Math.round(mockScores.reduce((sum, score) => sum + score, 0) / mockScores.length)
+        : 0;
+      
+      // Return simplified structure for display
+      return {
+        quiz: averageQuiz,
+        mockTest: averageMock
+      };
     };
 
     // Calculate top performing student
     const calculateTopStudent = () => {
-      const studentsWithAverage = studentsData.map(student => {
-        const subjectScores = Object.values(student.subjects)
-          .filter(subject => subject.status === 'complete')
-          .map(subject => subject.score);
-        
-        const averageScore = subjectScores.length > 0 
-          ? subjectScores.reduce((sum, score) => sum + score, 0) / subjectScores.length
-          : 0;
-        
-        return {
+      const studentsWithAverage = studentsData
+        .filter(student => student.averageScore !== null)
+        .map(student => ({
           ...student,
-          averageScore: Math.round(averageScore)
-        };
-      });
+          averageScore: student.averageScore || 0
+        }));
+
+      if (studentsWithAverage.length === 0) {
+        return { averageScore: 0, name: 'N/A', email: 'N/A' };
+      }
 
       return studentsWithAverage.reduce((topStudent, currentStudent) => {
         return currentStudent.averageScore > topStudent.averageScore ? currentStudent : topStudent;
@@ -537,16 +594,14 @@ const Results = () => {
 
     // Calculate overall class average
     const calculateClassAverage = () => {
-      const allSubjectScores = studentsData.flatMap(student => 
-        Object.values(student.subjects)
-          .filter(subject => subject.status === 'complete')
-          .map(subject => subject.score)
-      );
+      const allAverageScores = studentsData
+        .filter(student => student.averageScore !== null)
+        .map(student => student.averageScore);
 
-      if (allSubjectScores.length === 0) return 0;
+      if (allAverageScores.length === 0) return 0;
       
-      const totalScore = allSubjectScores.reduce((sum, score) => sum + score, 0);
-      return Math.round(totalScore / allSubjectScores.length);
+      const totalScore = allAverageScores.reduce((sum, score) => sum + score, 0);
+      return Math.round(totalScore / allAverageScores.length);
     };
 
     const subjectAverages = calculateSubjectAverages();
@@ -617,11 +672,11 @@ const Results = () => {
 
     // Calculate overall statistics
     const totalStudents = studentsData.length;
-    const quizCompleted = studentsData.filter(student => student.quiz.status === 'complete').length;
-    const mocktestCompleted = studentsData.filter(student => student.mocktest.status === 'complete').length;
+    const quizCompleted = studentsData.filter(student => student.quizScore !== null).length;
+    const mocktestCompleted = studentsData.filter(student => student.mockScore !== null).length;
     const totalQuizScore = studentsData
-      .filter(student => student.quiz.status === 'complete')
-      .reduce((sum, student) => sum + student.quiz.score, 0);
+      .filter(student => student.quizScore !== null)
+      .reduce((sum, student) => sum + (student.quizScore || 0), 0);
     const averageQuizScore = quizCompleted > 0 ? Math.round(totalQuizScore / quizCompleted) : 0;
 
     // Stats card style
@@ -747,68 +802,115 @@ const Results = () => {
           </div>
         </div>
 
-        {/* Subject-wise Performance Cards */}
+        {/* Assessment Performance Cards */}
         <div style={cardStyle}>
-          <h2 style={cardTitleStyle}>🎯 {t('studentResults.subjectWisePerformance')}</h2>
+          <h2 style={cardTitleStyle}>🎯 Assessment Performance</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-            {Object.entries(subjectAverages).map(([subject, averageScore]) => {
-              const subjectInfo = subjectData[subject];
-              const gradeColor = getGradeColor(averageScore);
-              const gradeText = getGradeText(averageScore);
-              
-              return (
-                <div 
-                  key={subject} 
-                  style={subjectCardStyle}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ 
-                        fontSize: '1.5rem',
-                        background: `linear-gradient(135deg, ${subjectInfo.color}, ${subjectInfo.color}99)`,
-                        borderRadius: '10px',
-                        padding: '8px'
-                      }}>
-                        {subjectInfo.icon}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: '600', color: colors.dark, fontSize: '1rem' }}>
-                          {subjectInfo.name}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: colors.muted, marginTop: '2px' }}>
-                          {gradeText}
-                        </div>
-                      </div>
-                    </div>
+            {/* Quiz Performance Card */}
+            {subjectAverages.quiz > 0 && (
+              <div 
+                style={subjectCardStyle}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ 
-                      fontSize: '1.4rem', 
-                      fontWeight: '700', 
-                      color: gradeColor,
-                      textShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      fontSize: '1.5rem',
+                      background: 'linear-gradient(135deg, #3CB371, #3CB37199)',
+                      borderRadius: '10px',
+                      padding: '8px'
                     }}>
-                      {averageScore}%
+                      📝
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '600', color: colors.dark, fontSize: '1rem' }}>
+                        Quiz Average
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: colors.muted, marginTop: '2px' }}>
+                        {getGradeText(subjectAverages.quiz)}
+                      </div>
                     </div>
                   </div>
-                  
-                  <div style={progressBarContainerStyle}>
-                    <div style={getProgressBarStyle(averageScore, gradeColor)}></div>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
-                    <span style={{ fontSize: '0.75rem', color: colors.muted }}>0%</span>
-                    <span style={{ fontSize: '0.75rem', color: colors.muted }}>100%</span>
+                  <div style={{ 
+                    fontSize: '1.4rem', 
+                    fontWeight: '700', 
+                    color: getGradeColor(subjectAverages.quiz),
+                    textShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}>
+                    {subjectAverages.quiz}%
                   </div>
                 </div>
-              );
-            })}
+                
+                <div style={progressBarContainerStyle}>
+                  <div style={getProgressBarStyle(subjectAverages.quiz, getGradeColor(subjectAverages.quiz))}></div>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', color: colors.muted }}>0%</span>
+                  <span style={{ fontSize: '0.75rem', color: colors.muted }}>100%</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Mock Test Performance Card */}
+            {subjectAverages.mockTest > 0 && (
+              <div 
+                style={subjectCardStyle}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.12)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ 
+                      fontSize: '1.5rem',
+                      background: 'linear-gradient(135deg, #4DD0E1, #4DD0E199)',
+                      borderRadius: '10px',
+                      padding: '8px'
+                    }}>
+                      🎯
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '600', color: colors.dark, fontSize: '1rem' }}>
+                        Mock Test Average
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: colors.muted, marginTop: '2px' }}>
+                        {getGradeText(subjectAverages.mockTest)}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ 
+                    fontSize: '1.4rem', 
+                    fontWeight: '700', 
+                    color: getGradeColor(subjectAverages.mockTest),
+                    textShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}>
+                    {subjectAverages.mockTest}%
+                  </div>
+                </div>
+                
+                <div style={progressBarContainerStyle}>
+                  <div style={getProgressBarStyle(subjectAverages.mockTest, getGradeColor(subjectAverages.mockTest))}></div>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', color: colors.muted }}>0%</span>
+                  <span style={{ fontSize: '0.75rem', color: colors.muted }}>100%</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1049,9 +1151,9 @@ const Results = () => {
       const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            student.email.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesFilter = filterStatus === 'all' ||
-                           (filterStatus === 'quiz' && student.quiz.status === 'complete') ||
-                           (filterStatus === 'mocktest' && student.mocktest.status === 'complete') ||
-                           (filterStatus === 'pending' && (student.quiz.status === 'pending' || student.mocktest.status === 'pending'));
+                           (filterStatus === 'quiz' && student.quizScore !== null) ||
+                           (filterStatus === 'mocktest' && student.mockScore !== null) ||
+                           (filterStatus === 'pending' && (student.quizScore === null && student.mockScore === null));
       return matchesSearch && matchesFilter;
     });
 
@@ -1083,63 +1185,92 @@ const Results = () => {
               <tr>
                 <th style={{ ...tableHeaderStyle, width: '5%' }}>{t('studentResults.serialNumber')}</th>
                 <th style={{ ...tableHeaderStyle, width: '25%' }}>{t('studentResults.student')}</th>
-                <th style={{ ...tableHeaderStyle, width: '15%' }}>{t('studentResults.quizStatus')}</th>
-                <th style={{ ...tableHeaderStyle, width: '15%' }}>{t('studentResults.mockTestStatus')}</th>
+                <th style={{ ...tableHeaderStyle, width: '15%' }}>Quiz Score</th>
+                <th style={{ ...tableHeaderStyle, width: '15%' }}>Mock Score</th>
                 <th style={{ ...tableHeaderStyle, width: '15%' }}>{t('studentResults.averageScore')}</th>
                 <th style={{ ...tableHeaderStyle, width: '15%' }}>{t('studentResults.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.map((student, index) => {
-                const averageScore = Object.values(student.subjects).reduce((acc, subject) => acc + subject.score, 0) / Object.keys(student.subjects).length;
-                
-                return (
-                  <tr key={student.id} style={{ borderBottom: `1px solid ${colors.borderColor}` }}>
-                    <td style={tableCellStyle}><strong>{index + 1}</strong></td>
-                    <td style={tableCellStyle}>
-                      <div style={studentInfoStyle}>
-                        <div style={avatarStyle}>{student.initials}</div>
-                        <div>
-                          <div style={{fontWeight: '600', marginBottom: '2px'}}>{student.name}</div>
-                          <div style={{fontSize: '0.75rem', color: colors.muted}}>{student.email}</div>
+              {loading ? (
+                <tr>
+                  <td colSpan="6" style={{ ...tableCellStyle, textAlign: 'center', padding: '40px' }}>
+                    Loading students data...
+                  </td>
+                </tr>
+              ) : filteredStudents.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ ...tableCellStyle, textAlign: 'center', padding: '40px', color: colors.muted }}>
+                    {t('studentResults.noStudentsFound')}
+                  </td>
+                </tr>
+              ) : (
+                filteredStudents.map((student, index) => {
+                  // Calculate average: (quizScore + mockScore) / 2, or use available score
+                  let displayAverage = null;
+                  if (student.quizScore !== null && student.mockScore !== null) {
+                    displayAverage = Math.round((student.quizScore + student.mockScore) / 2);
+                  } else if (student.quizScore !== null) {
+                    displayAverage = student.quizScore;
+                  } else if (student.mockScore !== null) {
+                    displayAverage = student.mockScore;
+                  }
+                  
+                  return (
+                    <tr key={student.id} style={{ borderBottom: `1px solid ${colors.borderColor}` }}>
+                      <td style={tableCellStyle}><strong>{index + 1}</strong></td>
+                      <td style={tableCellStyle}>
+                        <div style={studentInfoStyle}>
+                          <div style={avatarStyle}>{student.initials}</div>
+                          <div>
+                            <div style={{fontWeight: '600', marginBottom: '2px'}}>{student.name}</div>
+                            <div style={{fontSize: '0.75rem', color: colors.muted}}>{student.email}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <span style={statusStyle(student.quiz.status)}>
-                        {student.quiz.status === 'complete' ? `${t('studentResults.completed')} (${student.quiz.score}%)` : t('studentResults.pending')}
-                      </span>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <span style={statusStyle(student.mocktest.status)}>
-                        {student.mocktest.status === 'complete' ? `${t('studentResults.completed')} (${student.mocktest.score}%)` : t('studentResults.pending')}
-                      </span>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <strong style={{ color: colors.primary, fontSize: '0.9rem' }}>
-                        {averageScore.toFixed(1)}%
-                      </strong>
-                    </td>
-                    <td style={tableCellStyle}>
-                      <button
-                        style={viewDetailsButtonStyle}
-                        onClick={() => handleViewDetails(student)}
-                      >
-                        {t('studentResults.viewDetails')}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td style={tableCellStyle}>
+                        {student.quizScore !== null ? (
+                          <strong style={{ color: colors.success, fontSize: '0.9rem' }}>
+                            {student.quizScore}%
+                          </strong>
+                        ) : (
+                          <span style={{ color: colors.muted, fontSize: '0.85rem' }}>N/A</span>
+                        )}
+                      </td>
+                      <td style={tableCellStyle}>
+                        {student.mockScore !== null ? (
+                          <strong style={{ color: colors.info, fontSize: '0.9rem' }}>
+                            {student.mockScore}%
+                          </strong>
+                        ) : (
+                          <span style={{ color: colors.muted, fontSize: '0.85rem' }}>N/A</span>
+                        )}
+                      </td>
+                      <td style={tableCellStyle}>
+                        {displayAverage !== null ? (
+                          <strong style={{ color: colors.primary, fontSize: '0.9rem' }}>
+                            {displayAverage}%
+                          </strong>
+                        ) : (
+                          <span style={{ color: colors.muted, fontSize: '0.85rem' }}>N/A</span>
+                        )}
+                      </td>
+                      <td style={tableCellStyle}>
+                        <button
+                          style={viewDetailsButtonStyle}
+                          onClick={() => handleViewDetails(student)}
+                        >
+                          {t('studentResults.viewDetails')}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
 
-        {filteredStudents.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px', color: colors.muted }}>
-            {t('studentResults.noStudentsFound')}
-          </div>
-        )}
       </div>
     );
   };

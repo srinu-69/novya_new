@@ -14,7 +14,7 @@ import uuid
 
 from .models import (
     User, Student, Parent, PasswordResetToken,
-    ParentRegistration, StudentRegistration, ParentStudentMapping, StudentProfile,
+    ParentRegistration, StudentRegistration, TeacherRegistration, ParentStudentMapping, StudentProfile, TeacherProfile,
     CoinTransaction, UserCoinBalance, StudentFeedback,
     UserBadge, UserStreak, DailyActivity, LeaderboardEntry
 )
@@ -23,8 +23,8 @@ from .serializers import (
     PasswordChangeSerializer, PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer, StudentSerializer, ParentSerializer,
     ProfileUpdateSerializer, ParentRegistrationSerializer, StudentRegistrationSerializer,
-    ParentStudentMappingSerializer, StudentProfileSerializer,
-    ParentRegistrationCreateSerializer, StudentRegistrationCreateSerializer,
+    ParentStudentMappingSerializer, StudentProfileSerializer, TeacherProfileSerializer,
+    ParentRegistrationCreateSerializer, StudentRegistrationCreateSerializer, TeacherRegistrationCreateSerializer,
     CoinTransactionSerializer, AddCoinTransactionSerializer, UserCoinBalanceSerializer,
     StudentFeedbackSerializer, StudentFeedbackCreateSerializer,
     UserBadgeSerializer, UserStreakSerializer, DailyActivitySerializer, LeaderboardEntrySerializer
@@ -201,13 +201,199 @@ def update_streak_for_student(student):
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Custom JWT token view that includes user data in response
+    Validates that user exists in the correct registration table based on role
     """
     def post(self, request, *args, **kwargs):
-        print(f"🔍 LOGIN ATTEMPT: username={request.data.get('username')}")
+        username = request.data.get('username')
+        role = request.data.get('role', '').lower().strip()  # Get role from request (student/parent/teacher)
+        print(f"🔍 LOGIN ATTEMPT: username={username}, role='{role}' (raw: {request.data.get('role')})")
+        
+        # Require role for login - reject if not provided
+        if not role:
+            print(f"❌ LOGIN REJECTED: No role provided in login request")
+            return Response(
+                {'detail': 'Role is required for login. Please specify student, parent, or teacher.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate role is one of the allowed values
+        if role not in ['student', 'parent', 'teacher']:
+            print(f"❌ LOGIN REJECTED: Invalid role '{role}'")
+            return Response(
+                {'detail': f'Invalid role: {role}. Role must be student, parent, or teacher.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # VALIDATE USER EXISTS IN CORRECT REGISTRATION TABLE BEFORE AUTHENTICATION
+        # Check registration tables directly by username (most reliable)
+        validation_error = None
+        
+        if role == 'student':
+            # Check if username exists in StudentRegistration
+            student_found = StudentRegistration.objects.filter(student_username=username).exists()
+            
+            if not student_found:
+                # Check if they're in other tables
+                in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists()
+                in_parent = ParentRegistration.objects.filter(parent_username=username).exists()
+                
+                if in_teacher:
+                    validation_error = "Invalid login: This account is registered as a teacher, not a student. Please use the teacher login."
+                elif in_parent:
+                    validation_error = "Invalid login: This account is registered as a parent, not a student. Please use the parent login."
+                else:
+                    validation_error = "Invalid login: This account is not registered as a student. Please use the correct login type."
+        
+        elif role == 'parent':
+            parent_found = ParentRegistration.objects.filter(parent_username=username).exists()
+            
+            if not parent_found:
+                in_student = StudentRegistration.objects.filter(student_username=username).exists()
+                in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists()
+                
+                if in_student:
+                    validation_error = "Invalid login: This account is registered as a student, not a parent. Please use the student login."
+                elif in_teacher:
+                    validation_error = "Invalid login: This account is registered as a teacher, not a parent. Please use the teacher login."
+                else:
+                    validation_error = "Invalid login: This account is not registered as a parent. Please use the correct login type."
+        
+        elif role == 'teacher':
+            teacher_found = TeacherRegistration.objects.filter(teacher_username=username).exists()
+            
+            if not teacher_found:
+                in_student = StudentRegistration.objects.filter(student_username=username).exists()
+                in_parent = ParentRegistration.objects.filter(parent_username=username).exists()
+                
+                if in_student:
+                    validation_error = "Invalid login: This account is registered as a student, not a teacher. Please use the student login."
+                elif in_parent:
+                    validation_error = "Invalid login: This account is registered as a parent, not a teacher. Please use the parent login."
+                else:
+                    validation_error = "Invalid login: This account is not registered as a teacher. Please use the correct login type."
+        
+        # Reject login BEFORE authentication if validation fails
+        if validation_error:
+            print(f"🚫 LOGIN REJECTED BEFORE AUTH: {validation_error}")
+            return Response(
+                {'detail': validation_error},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         response = super().post(request, *args, **kwargs)
         print(f"🔍 LOGIN RESPONSE STATUS: {response.status_code}")
         if response.status_code == 200:
-            # Get user data
+            # ALWAYS validate role if provided - this is critical for security
+            if role:
+                try:
+                    user = User.objects.get(username=username)
+                    print(f"🔍 Validating user role: User.role='{user.role}', requested role='{role}'")
+                    validation_error = None
+                    
+                    if role == 'student':
+                        # Check if user exists in StudentRegistration table
+                        student_found = False
+                        try:
+                            StudentRegistration.objects.get(student_username=username)
+                            student_found = True
+                            print(f"✅ Student validation passed: {username} exists in StudentRegistration")
+                        except StudentRegistration.DoesNotExist:
+                            # Try by email as fallback
+                            try:
+                                StudentRegistration.objects.get(student_email=user.email)
+                                student_found = True
+                                print(f"✅ Student validation passed: {user.email} exists in StudentRegistration")
+                            except StudentRegistration.DoesNotExist:
+                                pass
+                        
+                        if not student_found:
+                            # Also check if user exists in OTHER registration tables (should not)
+                            in_parent = ParentRegistration.objects.filter(parent_username=username).exists() or ParentRegistration.objects.filter(email=user.email).exists()
+                            in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists() or TeacherRegistration.objects.filter(email=user.email).exists()
+                            
+                            if in_parent:
+                                validation_error = "Invalid login: This account is registered as a parent, not a student. Please use the parent login."
+                            elif in_teacher:
+                                validation_error = "Invalid login: This account is registered as a teacher, not a student. Please use the teacher login."
+                            else:
+                                validation_error = "Invalid login: This account is not registered as a student. Please use the correct login type."
+                            print(f"❌ Student validation failed: {username} not found in StudentRegistration (in_parent={in_parent}, in_teacher={in_teacher})")
+                    
+                    elif role == 'parent':
+                        # Check if user exists in ParentRegistration table
+                        parent_found = False
+                        try:
+                            ParentRegistration.objects.get(parent_username=username)
+                            parent_found = True
+                            print(f"✅ Parent validation passed: {username} exists in ParentRegistration")
+                        except ParentRegistration.DoesNotExist:
+                            # Try by email as fallback
+                            try:
+                                ParentRegistration.objects.get(email=user.email)
+                                parent_found = True
+                                print(f"✅ Parent validation passed: {user.email} exists in ParentRegistration")
+                            except ParentRegistration.DoesNotExist:
+                                pass
+                        
+                        if not parent_found:
+                            # Also check if user exists in OTHER registration tables (should not)
+                            in_student = StudentRegistration.objects.filter(student_username=username).exists() or StudentRegistration.objects.filter(student_email=user.email).exists()
+                            in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists() or TeacherRegistration.objects.filter(email=user.email).exists()
+                            
+                            if in_student:
+                                validation_error = "Invalid login: This account is registered as a student, not a parent. Please use the student login."
+                            elif in_teacher:
+                                validation_error = "Invalid login: This account is registered as a teacher, not a parent. Please use the teacher login."
+                            else:
+                                validation_error = "Invalid login: This account is not registered as a parent. Please use the correct login type."
+                            print(f"❌ Parent validation failed: {username} not found in ParentRegistration (in_student={in_student}, in_teacher={in_teacher})")
+                    
+                    elif role == 'teacher':
+                        # Check if user exists in TeacherRegistration table
+                        teacher_found = False
+                        try:
+                            TeacherRegistration.objects.get(teacher_username=username)
+                            teacher_found = True
+                            print(f"✅ Teacher validation passed: {username} exists in TeacherRegistration")
+                        except TeacherRegistration.DoesNotExist:
+                            # Try by email as fallback
+                            try:
+                                TeacherRegistration.objects.get(email=user.email)
+                                teacher_found = True
+                                print(f"✅ Teacher validation passed: {user.email} exists in TeacherRegistration")
+                            except TeacherRegistration.DoesNotExist:
+                                pass
+                        
+                        if not teacher_found:
+                            # Also check if user exists in OTHER registration tables (should not)
+                            in_student = StudentRegistration.objects.filter(student_username=username).exists() or StudentRegistration.objects.filter(student_email=user.email).exists()
+                            in_parent = ParentRegistration.objects.filter(parent_username=username).exists() or ParentRegistration.objects.filter(email=user.email).exists()
+                            
+                            if in_student:
+                                validation_error = "Invalid login: This account is registered as a student, not a teacher. Please use the student login."
+                            elif in_parent:
+                                validation_error = "Invalid login: This account is registered as a parent, not a teacher. Please use the parent login."
+                            else:
+                                validation_error = "Invalid login: This account is not registered as a teacher. Please use the correct login type."
+                            print(f"❌ Teacher validation failed: {username} not found in TeacherRegistration (in_student={in_student}, in_parent={in_parent})")
+                    
+                    # If validation failed, return error response
+                    if validation_error:
+                        print(f"🚫 LOGIN REJECTED: {validation_error}")
+                        return Response(
+                            {'detail': validation_error},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                    else:
+                        print(f"✅ Role validation passed for {username} as {role}")
+                except User.DoesNotExist:
+                    print(f"❌ User {username} not found in User table")
+                    return Response(
+                        {'detail': 'User not found'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            
+            # Get user data (only reached if validation passed)
             username = request.data.get('username')
             print(f"🔍 LOGIN SUCCESS: Fetching user {username}")
             user = User.objects.get(username=username)
@@ -334,6 +520,21 @@ def register_user(request):
             except ParentRegistration.DoesNotExist:
                 print(f"⚠️ User exists but ParentRegistration missing - will create it")
                 # User exists but parent_registration doesn't - we'll create it below
+        elif role == 'Teacher':
+            try:
+                teacher_reg = TeacherRegistration.objects.get(teacher_username=username)
+                print(f"✅ TeacherRegistration already exists for {username}")
+                # User and registration both exist - return error
+                return Response({
+                    'errors': {
+                        'username': ['Username already exists. Please choose a different username.'],
+                        'email': ['Email already registered. Please use a different email.'],
+                    },
+                    'message': 'User already fully registered'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except TeacherRegistration.DoesNotExist:
+                print(f"⚠️ User exists but TeacherRegistration missing - will create it")
+                # User exists but teacher_registration doesn't - we'll create it below
     except User.DoesNotExist:
         print(f"✅ User {username} does not exist - will create new user")
         existing_user = None
@@ -425,6 +626,38 @@ def register_user(request):
                     parent_password=existing_user.password  # Already hashed
                 )
                 print(f"✅ Created ParentRegistration for existing user")
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(existing_user)
+                
+                return Response({
+                    'message': 'Registration completed successfully for existing user',
+                    'user': UserSerializer(existing_user).data,
+                    'tokens': {
+                        'refresh': str(refresh),
+                        'access': str(refresh.access_token),
+                    }
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                print(f"❌ Error completing registration for existing user: {e}")
+                import traceback
+                traceback.print_exc()
+                return Response({
+                    'error': f'Failed to complete registration: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        elif existing_user.role == 'Teacher':
+            # Create TeacherRegistration for existing user
+            try:
+                TeacherRegistration.objects.create(
+                    email=existing_user.email,
+                    first_name=existing_user.firstname or '',
+                    last_name=existing_user.lastname or '',
+                    phone_number=existing_user.phonenumber or None,
+                    teacher_username=existing_user.username,
+                    teacher_password=existing_user.password  # Already hashed
+                )
+                print(f"✅ Created TeacherRegistration for existing user")
                 
                 # Generate JWT tokens
                 refresh = RefreshToken.for_user(existing_user)
@@ -644,6 +877,22 @@ def register_user(request):
                 print(f"✅ Created ParentRegistration for {user.username}")
             except Exception as e:
                 print(f"❌ Error creating ParentRegistration: {e}")
+                # Continue anyway - user is still created
+        
+        elif user.role == 'Teacher':
+            # Create TeacherRegistration record (for database compatibility)
+            try:
+                TeacherRegistration.objects.create(
+                    email=user.email,
+                    first_name=user.firstname,
+                    last_name=user.lastname,
+                    phone_number=user.phonenumber,
+                    teacher_username=user.username,
+                    teacher_password=user.password  # Already hashed
+                )
+                print(f"✅ Created TeacherRegistration for {user.username}")
+            except Exception as e:
+                print(f"❌ Error creating TeacherRegistration: {e}")
                 # Continue anyway - user is still created
         
         # Generate JWT tokens
@@ -1341,6 +1590,22 @@ def register_student(request):
                 print(f"Warning: Could not create Student model: {student_error}")
                 # Continue with registration even if Student model creation fails
             
+            # Auto-create StudentProfile with registration data
+            try:
+                StudentProfile.objects.get_or_create(
+                    student_id=student.student_id,
+                    defaults={
+                        'student_username': student.student_username,
+                        'parent_email': student.parent_email,
+                        'grade': request.data.get('grade', ''),
+                        'school': request.data.get('school', ''),
+                        'address': request.data.get('address', ''),
+                    }
+                )
+                print(f"✅ Auto-created StudentProfile for student: {student.student_username}")
+            except Exception as profile_error:
+                print(f"Warning: Could not create StudentProfile: {profile_error}")
+            
         except Exception as e:
             # If User creation fails, delete the student registration
             student.delete()
@@ -1369,14 +1634,1061 @@ def get_parents(request):
 
 
 @api_view(['GET'])
-@permission_classes([permissions.AllowAny])  # Changed to AllowAny for testing
+@permission_classes([permissions.IsAuthenticated])
 def get_students(request):
     """
-    Get all students
+    Get students filtered by teacher's school (if user is a teacher)
+    Otherwise return all students (for admin/parent access)
     """
-    students = StudentRegistration.objects.all()
+    user = request.user
+    
+    # If user is a teacher, filter by school
+    if user.role == 'Teacher':
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+            
+            if teacher_school and teacher_school.strip():
+                # Get student profiles that match the teacher's school (case-insensitive)
+                teacher_school_trimmed = teacher_school.strip()
+                matching_profiles = StudentProfile.objects.filter(
+                    school__iexact=teacher_school_trimmed
+                ).exclude(school__isnull=True).exclude(school='')
+                
+                student_ids = [profile.student_id for profile in matching_profiles]
+                students = StudentRegistration.objects.filter(student_id__in=student_ids)
+                print(f"🏫 Teacher {user.username} - Filtered {students.count()} students from school '{teacher_school_trimmed}'")
+            else:
+                # Teacher has no school, return empty list
+                students = StudentRegistration.objects.none()
+                print(f"⚠️ Teacher {user.username} has no school assigned")
+        except (TeacherRegistration.DoesNotExist, TeacherProfile.DoesNotExist):
+            # Teacher profile not found, return empty list
+            students = StudentRegistration.objects.none()
+            print(f"⚠️ Teacher profile not found for {user.username}")
+    else:
+        # For non-teachers (admin/parent), return all students
+        students = StudentRegistration.objects.all()
+    
     serializer = StudentRegistrationSerializer(students, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_teacher_students(request):
+    """
+    Get students filtered by teacher's school name
+    Only returns students whose school matches the teacher's school
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher's profile to get school name
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get or create teacher profile
+        try:
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+        except TeacherProfile.DoesNotExist:
+            # If profile doesn't exist, create it
+            teacher_profile = TeacherProfile.objects.create(
+                teacher_id=teacher_reg.teacher_id,
+                teacher_username=teacher_reg.teacher_username,
+                teacher_name=f"{teacher_reg.first_name} {teacher_reg.last_name}",
+                email=teacher_reg.email,
+                phone_number=teacher_reg.phone_number,
+                school='',  # Will be empty if not set
+            )
+            teacher_school = teacher_profile.school
+        
+        # If teacher has no school set, return empty list
+        if not teacher_school or not teacher_school.strip():
+            return Response({
+                'students': [],
+                'message': 'No school assigned to teacher. Please update your profile with school name.',
+                'teacher_school': None
+            }, status=status.HTTP_200_OK)
+        
+        # Get all student profiles that match the teacher's school (case-insensitive, trimmed)
+        # Use __iexact for case-insensitive matching and handle whitespace
+        teacher_school_trimmed = teacher_school.strip() if teacher_school else ''
+        matching_profiles = StudentProfile.objects.filter(
+            school__iexact=teacher_school_trimmed
+        ).exclude(school__isnull=True).exclude(school='')
+        
+        print(f"🏫 Teacher {user.username} is from school: '{teacher_school_trimmed}'")
+        print(f"📋 Found {matching_profiles.count()} student profiles matching school '{teacher_school_trimmed}'")
+        
+        # Get student IDs from matching profiles
+        student_ids = [profile.student_id for profile in matching_profiles]
+        
+        # Get student registrations for those IDs
+        students = StudentRegistration.objects.filter(student_id__in=student_ids)
+        print(f"📊 Found {students.count()} students from school '{teacher_school_trimmed}'")
+        
+        # Serialize the data and add profile information
+        students_data = []
+        for student in students:
+            serializer = StudentRegistrationSerializer(student)
+            student_data = serializer.data
+            
+            # Add profile information
+            try:
+                profile = StudentProfile.objects.get(student_id=student.student_id)
+                student_data['profile'] = {
+                    'grade': profile.grade or '',
+                    'school': profile.school or '',
+                    'address': profile.address or ''
+                }
+            except StudentProfile.DoesNotExist:
+                student_data['profile'] = {
+                    'grade': '',
+                    'school': '',
+                    'address': ''
+                }
+            
+            # Add user information for display
+            try:
+                user = User.objects.get(username=student.student_username)
+                student_data['user_info'] = {
+                    'firstname': user.firstname,
+                    'lastname': user.lastname,
+                    'email': user.email,
+                    'phone': user.phonenumber or student.phone_number or ''
+                }
+            except User.DoesNotExist:
+                student_data['user_info'] = {
+                    'firstname': student.first_name,
+                    'lastname': student.last_name,
+                    'email': student.student_email or '',
+                    'phone': student.phone_number or ''
+                }
+            
+            # Add quiz and mock test scores using the EXACT same logic as get_student_performance
+            try:
+                from quizzes.models import QuizAttempt, MockTestAttempt
+                
+                # Get quiz attempts for this student (student_id is ForeignKey to StudentRegistration)
+                # Get ALL attempts, not just completed ones, to match career page logic
+                quiz_attempts = QuizAttempt.objects.filter(student_id=student)
+                print(f"  📊 Found {quiz_attempts.count()} quiz attempts for student {student.student_id}")
+                
+                # Get mock test attempts for this student
+                mock_test_attempts = MockTestAttempt.objects.filter(student_id=student)
+                print(f"  📊 Found {mock_test_attempts.count()} mock test attempts for student {student.student_id}")
+                
+                # Calculate quiz percentage: (total_correct_answers / total_questions_answered) * 100
+                # This matches the career page calculation EXACTLY
+                total_questions_answered = sum(attempt.total_questions or 0 for attempt in quiz_attempts)
+                total_correct_answers = sum(attempt.correct_answers or 0 for attempt in quiz_attempts)
+                
+                quiz_score = None
+                if total_questions_answered > 0:
+                    quiz_percentage = (total_correct_answers / total_questions_answered) * 100
+                    # Round to 1 decimal place to match career page: Math.round(quizPercentage * 10) / 10
+                    quiz_score = round(quiz_percentage * 10) / 10
+                    print(f"  ✅ Quiz score calculated: {total_correct_answers}/{total_questions_answered} = {quiz_score}%")
+                else:
+                    # Fallback: use average of score field if available (some attempts might only have score, not total_questions)
+                    quiz_scores = [attempt.score for attempt in quiz_attempts if attempt.score is not None and attempt.score >= 0]
+                    if quiz_scores:
+                        quiz_score = round((sum(quiz_scores) / len(quiz_scores)) * 10) / 10
+                        print(f"  ✅ Quiz score from score field: {quiz_score}% (from {len(quiz_scores)} attempts)")
+                    else:
+                        print(f"  ⚠️ No quiz score available (no attempts with scores)")
+                
+                # Calculate mock test percentage: (mock_test_correct_answers / mock_test_questions_answered) * 100
+                # This matches the career page calculation EXACTLY
+                mock_test_questions_answered = sum(attempt.total_questions or 0 for attempt in mock_test_attempts)
+                mock_test_correct_answers = sum(attempt.correct_answers or 0 for attempt in mock_test_attempts)
+                
+                mock_score = None
+                if mock_test_questions_answered > 0:
+                    mock_percentage = (mock_test_correct_answers / mock_test_questions_answered) * 100
+                    # Round to 1 decimal place to match career page: Math.round(mockTestPercentage * 10) / 10
+                    mock_score = round(mock_percentage * 10) / 10
+                    print(f"  ✅ Mock score calculated: {mock_test_correct_answers}/{mock_test_questions_answered} = {mock_score}%")
+                else:
+                    # Fallback: use average of score field if available
+                    mock_scores = [attempt.score for attempt in mock_test_attempts if attempt.score is not None and attempt.score >= 0]
+                    if mock_scores:
+                        mock_score = round((sum(mock_scores) / len(mock_scores)) * 10) / 10
+                        print(f"  ✅ Mock score from score field: {mock_score}% (from {len(mock_scores)} attempts)")
+                    else:
+                        print(f"  ⚠️ No mock score available (no attempts with scores)")
+                
+                # Calculate average of quiz and mock percentages
+                average_score = None
+                if quiz_score is not None and mock_score is not None:
+                    average_score = round(((quiz_score + mock_score) / 2) * 10) / 10
+                elif quiz_score is not None:
+                    average_score = quiz_score
+                elif mock_score is not None:
+                    average_score = mock_score
+                
+                # Get completion dates (latest attempt dates)
+                quiz_completion_date = None
+                if quiz_attempts.exists():
+                    latest_quiz = quiz_attempts.order_by('-attempted_at').first()
+                    if latest_quiz and latest_quiz.attempted_at:
+                        quiz_completion_date = latest_quiz.attempted_at.strftime('%Y-%m-%d')
+                
+                mock_completion_date = None
+                if mock_test_attempts.exists():
+                    latest_mock = mock_test_attempts.order_by('-attempted_at').first()
+                    if latest_mock and latest_mock.attempted_at:
+                        mock_completion_date = latest_mock.attempted_at.strftime('%Y-%m-%d')
+                
+                # Calculate real time spent (from time_taken_seconds)
+                total_quiz_time_seconds = sum(a.time_taken_seconds or 0 for a in quiz_attempts)
+                total_mock_time_seconds = sum(a.time_taken_seconds or 0 for a in mock_test_attempts)
+                total_quiz_time_minutes = int(total_quiz_time_seconds / 60)
+                total_mock_time_minutes = int(total_mock_time_seconds / 60)
+                
+                student_data['quiz_score'] = quiz_score
+                student_data['mock_score'] = mock_score
+                student_data['average_score'] = average_score
+                student_data['quiz_attempts_count'] = quiz_attempts.count()
+                student_data['mock_attempts_count'] = mock_test_attempts.count()
+                student_data['quiz_completion_date'] = quiz_completion_date
+                student_data['mock_completion_date'] = mock_completion_date
+                student_data['quiz_time_minutes'] = total_quiz_time_minutes
+                student_data['mock_time_minutes'] = total_mock_time_minutes
+                
+                # Calculate subject-wise performance - Use same approach as get_student_performance
+                # First, collect all attempts by actual subject name from database (like student portal)
+                raw_subject_data = {}
+                
+                # Process quiz attempts - use actual subject names from database
+                for attempt in quiz_attempts:
+                    subject = (attempt.subject or 'Unknown').strip()
+                    if subject not in raw_subject_data:
+                        raw_subject_data[subject] = {
+                            'quiz_attempts': [],
+                            'mock_attempts': [],
+                            'quiz_total_q': 0,
+                            'quiz_total_correct': 0,
+                            'quiz_total_time': 0,
+                            'mock_total_q': 0,
+                            'mock_total_correct': 0,
+                            'mock_total_time': 0
+                        }
+                    
+                    raw_subject_data[subject]['quiz_attempts'].append(attempt)
+                    raw_subject_data[subject]['quiz_total_q'] += attempt.total_questions or 0
+                    raw_subject_data[subject]['quiz_total_correct'] += attempt.correct_answers or 0
+                    raw_subject_data[subject]['quiz_total_time'] += attempt.time_taken_seconds or 0
+                
+                # Process mock test attempts - use actual subject names from database
+                for attempt in mock_test_attempts:
+                    subject = (attempt.subject or 'Unknown').strip()
+                    if subject not in raw_subject_data:
+                        raw_subject_data[subject] = {
+                            'quiz_attempts': [],
+                            'mock_attempts': [],
+                            'quiz_total_q': 0,
+                            'quiz_total_correct': 0,
+                            'quiz_total_time': 0,
+                            'mock_total_q': 0,
+                            'mock_total_correct': 0,
+                            'mock_total_time': 0
+                        }
+                    
+                    raw_subject_data[subject]['mock_attempts'].append(attempt)
+                    raw_subject_data[subject]['mock_total_q'] += attempt.total_questions or 0
+                    raw_subject_data[subject]['mock_total_correct'] += attempt.correct_answers or 0
+                    raw_subject_data[subject]['mock_total_time'] += attempt.time_taken_seconds or 0
+                
+                # Now map raw subjects to standard 5 subjects (flexible matching like student portal)
+                def normalize_subject_name(subject_name):
+                    """Map any subject name to one of the 5 standard subjects"""
+                    if not subject_name:
+                        return None
+                    subject_lower = subject_name.lower().strip()
+                    
+                    # Mathematics matching
+                    if any(keyword in subject_lower for keyword in ['math', 'mathematics', 'maths']):
+                        return 'mathematics'
+                    # English matching
+                    elif any(keyword in subject_lower for keyword in ['english', 'eng']):
+                        return 'english'
+                    # Science matching
+                    elif any(keyword in subject_lower for keyword in ['science', 'sci']):
+                        return 'science'
+                    # Social Studies matching
+                    elif any(keyword in subject_lower for keyword in ['social', 'sst', 'studies']):
+                        return 'social'
+                    # Computer matching
+                    elif any(keyword in subject_lower for keyword in ['computer', 'comp', 'cs', 'computers']):
+                        return 'computer'
+                    return None
+                
+                # Map all raw subjects to standard subjects
+                subject_performance = {
+                    'mathematics': {'quiz_attempts': [], 'mock_attempts': [], 'quiz_total_q': 0, 'quiz_total_correct': 0, 'quiz_total_time': 0, 'mock_total_q': 0, 'mock_total_correct': 0, 'mock_total_time': 0},
+                    'english': {'quiz_attempts': [], 'mock_attempts': [], 'quiz_total_q': 0, 'quiz_total_correct': 0, 'quiz_total_time': 0, 'mock_total_q': 0, 'mock_total_correct': 0, 'mock_total_time': 0},
+                    'science': {'quiz_attempts': [], 'mock_attempts': [], 'quiz_total_q': 0, 'quiz_total_correct': 0, 'quiz_total_time': 0, 'mock_total_q': 0, 'mock_total_correct': 0, 'mock_total_time': 0},
+                    'social': {'quiz_attempts': [], 'mock_attempts': [], 'quiz_total_q': 0, 'quiz_total_correct': 0, 'quiz_total_time': 0, 'mock_total_q': 0, 'mock_total_correct': 0, 'mock_total_time': 0},
+                    'computer': {'quiz_attempts': [], 'mock_attempts': [], 'quiz_total_q': 0, 'quiz_total_correct': 0, 'quiz_total_time': 0, 'mock_total_q': 0, 'mock_total_correct': 0, 'mock_total_time': 0}
+                }
+                
+                # Aggregate data by normalized subject
+                for raw_subject, data in raw_subject_data.items():
+                    normalized = normalize_subject_name(raw_subject)
+                    if normalized and normalized in subject_performance:
+                        subject_performance[normalized]['quiz_attempts'].extend(data['quiz_attempts'])
+                        subject_performance[normalized]['mock_attempts'].extend(data['mock_attempts'])
+                        subject_performance[normalized]['quiz_total_q'] += data['quiz_total_q']
+                        subject_performance[normalized]['quiz_total_correct'] += data['quiz_total_correct']
+                        subject_performance[normalized]['quiz_total_time'] += data['quiz_total_time']
+                        subject_performance[normalized]['mock_total_q'] += data['mock_total_q']
+                        subject_performance[normalized]['mock_total_correct'] += data['mock_total_correct']
+                        subject_performance[normalized]['mock_total_time'] += data['mock_total_time']
+                
+                # Calculate scores for each standard subject
+                final_subject_performance = {}
+                for subject_key, data in subject_performance.items():
+                    # Calculate quiz score percentage
+                    quiz_score = None
+                    if data['quiz_total_q'] > 0:
+                        quiz_score = round((data['quiz_total_correct'] / data['quiz_total_q']) * 100, 1)
+                    
+                    # Calculate mock score percentage
+                    mock_score = None
+                    if data['mock_total_q'] > 0:
+                        mock_score = round((data['mock_total_correct'] / data['mock_total_q']) * 100, 1)
+                    
+                    # Calculate overall subject score (average of quiz and mock if both exist)
+                    subject_average = None
+                    if quiz_score is not None and mock_score is not None:
+                        subject_average = round((quiz_score + mock_score) / 2, 1)
+                    elif quiz_score is not None:
+                        subject_average = quiz_score
+                    elif mock_score is not None:
+                        subject_average = mock_score
+                    
+                    # Calculate total time in minutes
+                    total_time_minutes = int((data['quiz_total_time'] + data['mock_total_time']) / 60)
+                    
+                    # ALWAYS include the subject, even if no data (for UI consistency)
+                    final_subject_performance[subject_key] = {
+                        'score': subject_average,
+                        'quiz_score': quiz_score,
+                        'mock_score': mock_score,
+                        'time_minutes': total_time_minutes,
+                        'status': 'Complete' if subject_average is not None else 'Pending',
+                        'quiz_attempts': len(data['quiz_attempts']),
+                        'mock_attempts': len(data['mock_attempts'])
+                    }
+                
+                student_data['subject_performance'] = final_subject_performance
+                
+                print(f"✅ Student {student.student_id} ({student.student_username}): quiz={quiz_score}%, mock={mock_score}%, avg={average_score}%")
+                print(f"   📚 Subject performance: {len(final_subject_performance)} subjects")
+                for subj_key, subj_data in final_subject_performance.items():
+                    if subj_data['score'] is not None:
+                        print(f"      - {subj_key}: {subj_data['score']}% ({subj_data['quiz_attempts']} quiz, {subj_data['mock_attempts']} mock)")
+            except Exception as e:
+                import traceback
+                print(f"❌ Error fetching scores for student {student.student_id}: {e}")
+                print(traceback.format_exc())
+                student_data['quiz_score'] = None
+                student_data['mock_score'] = None
+                student_data['average_score'] = None
+                student_data['quiz_attempts_count'] = 0
+                student_data['mock_attempts_count'] = 0
+            
+            students_data.append(student_data)
+        
+        # Log summary of scores
+        students_with_scores = [s for s in students_data if s.get('quiz_score') is not None or s.get('mock_score') is not None]
+        print(f"📊 Summary: {len(students_with_scores)}/{len(students_data)} students have scores")
+        
+        return Response({
+            'students': students_data,
+            'teacher_school': teacher_school,
+            'total_count': len(students_data)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_teacher_students: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get teacher students: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_teacher_parents(request):
+    """
+    Get parents of students from the teacher's school
+    Only returns parents whose children (students) are in the teacher's school
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_teacher_parents called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            print(f"❌ Access denied: User {user.username} is not a teacher (role: {user.role})")
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            print(f"❌ Teacher registration not found for user: {user.username}")
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get teacher profile to get school
+        teacher_school = None
+        try:
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+            # Clean the school name (strip whitespace, handle empty strings)
+            if teacher_school:
+                teacher_school = teacher_school.strip()
+            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}'")
+        except TeacherProfile.DoesNotExist:
+            print(f"⚠️ Teacher profile not found for teacher_id: {teacher_reg.teacher_id}")
+            return Response({
+                'error': 'Teacher profile not found. Please complete your teacher profile setup.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Filter students by school if teacher has a school
+        if teacher_school and teacher_school != '':
+            # Get student IDs from StudentProfile that match the teacher's school (case-insensitive, trimmed)
+            student_profiles = StudentProfile.objects.filter(
+                school__iexact=teacher_school
+            ).exclude(school__isnull=True).exclude(school='')
+            
+            student_ids = [profile.student_id for profile in student_profiles]
+            print(f"📋 Found {len(student_ids)} student profiles matching school '{teacher_school}'")
+            
+            if student_ids:
+                # Get students from StudentRegistration
+                students = StudentRegistration.objects.filter(student_id__in=student_ids)
+                print(f"📊 Found {students.count()} students from school '{teacher_school}'")
+                
+                # Get unique parent emails from these students
+                parent_emails = set()
+                student_parent_map = {}  # Map parent_email to list of students
+                
+                print(f"🔍 Processing {students.count()} students to extract parent emails...")
+                for student in students:
+                    print(f"   📝 Student {student.student_id}: {student.first_name} {student.last_name}, parent_email='{student.parent_email}'")
+                    if student.parent_email and student.parent_email.strip():
+                        parent_email = student.parent_email.strip()
+                        parent_emails.add(parent_email)
+                        
+                        # Map parent to students
+                        if parent_email not in student_parent_map:
+                            student_parent_map[parent_email] = []
+                        student_parent_map[parent_email].append({
+                            'student_id': student.student_id,
+                            'student_name': f"{student.first_name} {student.last_name}".strip(),
+                            'student_email': student.student_email or '',
+                            'student_username': student.student_username
+                        })
+                        print(f"      ✅ Added parent_email: {parent_email}")
+                    else:
+                        print(f"      ⚠️ Student {student.student_id} has no parent_email or empty parent_email")
+                
+                print(f"👨‍👩‍👧‍👦 Found {len(parent_emails)} unique parent emails from students in school '{teacher_school}'")
+                
+                # Debug: Print all parent emails found
+                print(f"📧 Parent emails found: {list(parent_emails)}")
+                
+                # Get ParentRegistration records for these parent emails (case-insensitive matching)
+                parents_data = []
+                for parent_email in parent_emails:
+                    # Get all students linked to this parent
+                    linked_students = student_parent_map.get(parent_email, [])
+                    
+                    # Try to find parent in ParentRegistration (case-insensitive)
+                    parent = None
+                    try:
+                        # First try exact match
+                        parent = ParentRegistration.objects.get(email=parent_email)
+                        print(f"✅ Found parent (exact match): {parent.email}")
+                    except ParentRegistration.DoesNotExist:
+                        # Try case-insensitive match
+                        try:
+                            parent = ParentRegistration.objects.get(email__iexact=parent_email)
+                            print(f"✅ Found parent (case-insensitive): {parent.email} (searched for: {parent_email})")
+                        except ParentRegistration.DoesNotExist:
+                            # Try with trimmed/cleaned email
+                            try:
+                                cleaned_email = parent_email.strip().lower()
+                                parent = ParentRegistration.objects.filter(email__iexact=cleaned_email).first()
+                                if parent:
+                                    print(f"✅ Found parent (cleaned match): {parent.email} (searched for: {parent_email})")
+                            except Exception as e:
+                                print(f"⚠️ Error finding parent with cleaned email: {e}")
+                    
+                    # Calculate child performance (average of all children's average scores)
+                    from quizzes.models import QuizAttempt, MockTestAttempt
+                    child_performances = []
+                    
+                    for student_info in linked_students:
+                        student_id = student_info['student_id']
+                        try:
+                            # Get student registration object for filtering
+                            student_reg = StudentRegistration.objects.get(student_id=student_id)
+                            quiz_attempts = QuizAttempt.objects.filter(student_id=student_reg)
+                            mock_test_attempts = MockTestAttempt.objects.filter(student_id=student_reg)
+                            
+                            # Calculate average score for this child
+                            total_quiz_q = sum(a.total_questions or 0 for a in quiz_attempts)
+                            total_quiz_correct = sum(a.correct_answers or 0 for a in quiz_attempts)
+                            quiz_score = None
+                            if total_quiz_q > 0:
+                                quiz_score = (total_quiz_correct / total_quiz_q) * 100
+                            
+                            total_mock_q = sum(a.total_questions or 0 for a in mock_test_attempts)
+                            total_mock_correct = sum(a.correct_answers or 0 for a in mock_test_attempts)
+                            mock_score = None
+                            if total_mock_q > 0:
+                                mock_score = (total_mock_correct / total_mock_q) * 100
+                            
+                            # Calculate child average
+                            child_avg = None
+                            valid_scores = []
+                            if quiz_score is not None:
+                                valid_scores.append(quiz_score)
+                            if mock_score is not None:
+                                valid_scores.append(mock_score)
+                            
+                            if valid_scores:
+                                child_avg = sum(valid_scores) / len(valid_scores)
+                                child_performances.append(child_avg)
+                        except StudentRegistration.DoesNotExist:
+                            print(f"⚠️ StudentRegistration not found for student_id: {student_id}")
+                            continue
+                    
+                    # Determine overall performance badge
+                    overall_performance = 'average'
+                    if child_performances:
+                        avg_performance = sum(child_performances) / len(child_performances)
+                        if avg_performance >= 85:
+                            overall_performance = 'excellent'
+                        elif avg_performance >= 70:
+                            overall_performance = 'good'
+                        else:
+                            overall_performance = 'average'
+                    
+                    # For now, use first child's name (can be enhanced to show all children)
+                    primary_child = linked_students[0] if linked_students else None
+                    child_name = primary_child['student_name'] if primary_child else 'N/A'
+                    
+                    # Create parent data - use ParentRegistration if found, otherwise use email from StudentRegistration
+                    if parent:
+                        parent_data = {
+                            'parent_id': parent.parent_id,
+                            'parent_name': f"{parent.first_name} {parent.last_name}".strip(),
+                            'parent_email': parent.email,
+                            'parent_phone': parent.phone_number or '',
+                            'child_name': child_name,
+                            'child_performance': overall_performance,
+                            'unread_messages': 0,  # Can be enhanced later with actual message count
+                            'last_contact': '1 day ago',  # Can be enhanced later with actual last contact date
+                            'linked_students': linked_students  # All students linked to this parent
+                        }
+                    else:
+                        # Parent not found in ParentRegistration, but we have the email from StudentRegistration
+                        # Extract name from email or use a default
+                        email_parts = parent_email.split('@')
+                        email_name = email_parts[0] if email_parts else 'Parent'
+                        parent_data = {
+                            'parent_id': None,  # No parent registration ID
+                            'parent_name': email_name.replace('.', ' ').replace('_', ' ').title(),  # Try to make it readable
+                            'parent_email': parent_email,
+                            'parent_phone': '',  # No phone available
+                            'child_name': child_name,
+                            'child_performance': overall_performance,
+                            'unread_messages': 0,
+                            'last_contact': '1 day ago',
+                            'linked_students': linked_students
+                        }
+                        print(f"⚠️ ParentRegistration not found for email: {parent_email}, using email-based parent data")
+                    
+                    parents_data.append(parent_data)
+                    print(f"✅ Added parent: {parent_data['parent_name']} (email: {parent_data['parent_email']}) with {len(linked_students)} child(ren)")
+                
+                print(f"✅ Returning {len(parents_data)} parents for teacher {user.username}")
+                
+                return Response({
+                    'parents': parents_data,
+                    'teacher_school': teacher_school,
+                    'total_count': len(parents_data)
+                }, status=status.HTTP_200_OK)
+            else:
+                # No students found with matching school
+                print(f"⚠️ No students found with school '{teacher_school}'")
+                return Response({
+                    'parents': [],
+                    'teacher_school': teacher_school,
+                    'total_count': 0,
+                    'message': f'No students found in school "{teacher_school}". No parents to display.'
+                }, status=status.HTTP_200_OK)
+        else:
+            # If teacher has no school, return error (don't return all parents)
+            print(f"❌ Teacher has no school assigned (school='{teacher_school}')")
+            return Response({
+                'error': 'Teacher has no school assigned. Please update your teacher profile with a school name.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_teacher_parents: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to fetch teacher parents: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def send_parent_message(request):
+    """
+    Teacher sends a message to a parent about a specific student
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can send messages to parents.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get required data from request
+        parent_email_request = request.data.get('parent_email')
+        student_id = request.data.get('student_id')
+        message = request.data.get('message')
+        title = request.data.get('title', 'Message from Teacher')
+        
+        # Validate required fields
+        if not parent_email_request or not student_id or not message:
+            return Response({
+                'error': 'Missing required fields: parent_email, student_id, and message are required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get teacher registration to get teacher_id
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+            teacher_id = teacher_reg.teacher_id
+        except TeacherRegistration.DoesNotExist:
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify student exists and get the actual parent email from student registration
+        try:
+            student = StudentRegistration.objects.get(student_id=student_id)
+            # Use the parent_email from student registration as the source of truth
+            parent_email_from_student = student.parent_email.lower().strip()
+            
+            # Verify the requested parent email matches the student's parent
+            if parent_email_from_student != parent_email_request.lower().strip():
+                return Response({
+                    'error': 'Student does not belong to the specified parent.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Find the parent's User account to get the correct email for notifications
+        # This ensures we use the same email that will be used when fetching notifications
+        from authentication.models import User, ParentRegistration
+        
+        parent_user_email = parent_email_from_student
+        try:
+            # First try to find parent by email in User table
+            parent_user = User.objects.filter(email=parent_email_from_student, role='Parent').first()
+            if parent_user:
+                parent_user_email = parent_user.email.lower().strip()
+                print(f"✅ Found parent User account with email: {parent_user_email}")
+            else:
+                # If not found, try to find via parent_registration
+                try:
+                    parent_reg = ParentRegistration.objects.get(email=parent_email_from_student)
+                    # Try to find User with same username
+                    parent_user = User.objects.filter(username=parent_reg.parent_username, role='Parent').first()
+                    if parent_user:
+                        parent_user_email = parent_user.email.lower().strip()
+                        print(f"✅ Found parent User account via username: {parent_user_email}")
+                    else:
+                        # Use parent_registration email as fallback
+                        parent_user_email = parent_reg.email.lower().strip()
+                        print(f"⚠️ Using parent_registration email as fallback: {parent_user_email}")
+                except ParentRegistration.DoesNotExist:
+                    print(f"⚠️ Warning: Parent registration not found for email: {parent_email_from_student}")
+        except Exception as e:
+            print(f"⚠️ Warning: Error looking up parent User account: {str(e)}")
+            # Continue with student's parent_email
+            pass
+        
+        # Import ParentNotification model
+        from notifications.models import ParentNotification
+        
+        # Create notification using the verified parent email
+        notification = ParentNotification.objects.create(
+            parent_email=parent_user_email,
+            student_id=student_id,
+            teacher_id=teacher_id,
+            notification_type='teacher_message',
+            title=title,
+            message=message
+        )
+        
+        print(f"✅ Created parent notification: {notification.notification_id} for parent {parent_user_email} (requested: {parent_email_request}) about student {student_id}")
+        
+        return Response({
+            'message': 'Message sent to parent successfully',
+            'notification_id': notification.notification_id,
+            'created_at': notification.created_at
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in send_parent_message: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to send message: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def send_student_message(request):
+    """
+    Teacher sends a message to a student
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can send messages to students.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get required data from request
+        student_id = request.data.get('student_id')
+        message = request.data.get('message')
+        title = request.data.get('title', 'Message from Teacher')
+        
+        # Validate required fields
+        if not student_id or not message:
+            return Response({
+                'error': 'Missing required fields: student_id and message are required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get teacher registration to get teacher_id
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+            teacher_id = teacher_reg.teacher_id
+        except TeacherRegistration.DoesNotExist:
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify student exists
+        try:
+            student = StudentRegistration.objects.get(student_id=student_id)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Import StudentNotification model
+        from notifications.models import StudentNotification
+        
+        # Create notification
+        notification = StudentNotification.objects.create(
+            student_id=student_id,
+            teacher_id=teacher_id,
+            notification_type='teacher_message',
+            title=title,
+            message=message
+        )
+        
+        print(f"✅ Created student notification: {notification.notification_id} for student {student_id} from teacher {teacher_id}")
+        
+        return Response({
+            'message': 'Message sent to student successfully',
+            'notification_id': notification.notification_id,
+            'created_at': notification.created_at
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in send_student_message: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to send message: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_parent_notifications(request):
+    """
+    Get notifications for a parent, filtered by the student email they entered during login
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get parent email from User account
+        parent_email = user.email.lower().strip()
+        print(f"🔍 Fetching notifications for parent: {parent_email} (User: {user.username})")
+        
+        # Get student email from localStorage (stored during parent login)
+        # For now, we'll get it from the child_email query param or from student_registration
+        child_email = request.query_params.get('child_email')
+        print(f"🔍 Child email from query param: {child_email}")
+        
+        # Import ParentNotification model
+        from notifications.models import ParentNotification
+        
+        # If child_email is provided, filter by that specific student
+        if child_email:
+            # Get student_id from email
+            try:
+                student = StudentRegistration.objects.get(student_email=child_email.lower().strip())
+                student_id = student.student_id
+                print(f"🔍 Found student: {student.first_name} {student.last_name} (ID: {student_id})")
+                
+                # Get notifications for this parent about this specific student
+                notifications = ParentNotification.objects.filter(
+                    parent_email=parent_email,
+                    student_id=student_id
+                ).order_by('-created_at')
+                
+                print(f"🔍 Found {notifications.count()} notifications for parent {parent_email} and student {student_id}")
+            except StudentRegistration.DoesNotExist:
+                print(f"⚠️ Student not found for email: {child_email}")
+                notifications = ParentNotification.objects.none()
+        else:
+            # Get all notifications for this parent (all their children)
+            notifications = ParentNotification.objects.filter(
+                parent_email=parent_email
+            ).order_by('-created_at')
+            print(f"🔍 Found {notifications.count()} total notifications for parent {parent_email}")
+        
+        # Debug: Also check for notifications with different email formats (case sensitivity, etc.)
+        if notifications.count() == 0:
+            all_notifications = ParentNotification.objects.filter(
+                parent_email__iexact=parent_email
+            )
+            if all_notifications.exists():
+                print(f"⚠️ Found {all_notifications.count()} notifications with case-insensitive match")
+                notifications = all_notifications.order_by('-created_at')
+        
+        # Format notifications
+        notifications_data = []
+        for notif in notifications:
+            # Get student name
+            try:
+                student = StudentRegistration.objects.get(student_id=notif.student_id)
+                student_name = f"{student.first_name} {student.last_name}".strip()
+            except StudentRegistration.DoesNotExist:
+                student_name = 'Unknown Student'
+            
+            # Get teacher name (if available)
+            teacher_name = None
+            if notif.teacher_id:
+                try:
+                    teacher = TeacherRegistration.objects.get(teacher_id=notif.teacher_id)
+                    teacher_name = f"{teacher.first_name} {teacher.last_name}".strip()
+                except TeacherRegistration.DoesNotExist:
+                    teacher_name = None
+            
+            notifications_data.append({
+                'notification_id': notif.notification_id,
+                'title': notif.title,
+                'message': notif.message,
+                'student_id': notif.student_id,
+                'student_name': student_name,
+                'teacher_id': notif.teacher_id,
+                'teacher_name': teacher_name,
+                'notification_type': notif.notification_type,
+                'is_read': notif.is_read,
+                'read_at': notif.read_at,
+                'created_at': notif.created_at,
+                'time_ago': _get_time_ago(notif.created_at)
+            })
+        
+        # Count unread
+        unread_count = sum(1 for n in notifications_data if not n['is_read'])
+        
+        return Response({
+            'notifications': notifications_data,
+            'total_count': len(notifications_data),
+            'unread_count': unread_count
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_parent_notifications: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to fetch notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_parent_notification_read(request, notification_id):
+    """
+    Mark a parent notification as read
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can mark notifications as read.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get parent email
+        parent_email = user.email.lower().strip()
+        
+        # Import ParentNotification model
+        from notifications.models import ParentNotification
+        
+        try:
+            notification = ParentNotification.objects.get(
+                notification_id=notification_id,
+                parent_email=parent_email
+            )
+        except ParentNotification.DoesNotExist:
+            return Response({
+                'error': 'Notification not found or access denied.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Mark as read
+        if not notification.is_read:
+            notification.is_read = True
+            notification.read_at = timezone.now()
+            notification.save()
+            print(f"✅ Marked notification {notification_id} as read")
+        
+        return Response({
+            'message': 'Notification marked as read',
+            'notification_id': notification.notification_id
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in mark_parent_notification_read: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to mark notification as read: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_parent_notification(request, notification_id):
+    """
+    Delete a parent notification
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can delete notifications.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get parent email
+        parent_email = user.email.lower().strip()
+        
+        # Import ParentNotification model
+        from notifications.models import ParentNotification
+        
+        try:
+            notification = ParentNotification.objects.get(
+                notification_id=notification_id,
+                parent_email=parent_email
+            )
+        except ParentNotification.DoesNotExist:
+            return Response({
+                'error': 'Notification not found or access denied.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Delete notification
+        notification.delete()
+        print(f"✅ Deleted notification {notification_id}")
+        
+        return Response({
+            'message': 'Notification deleted successfully',
+            'notification_id': notification_id
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in delete_parent_notification: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to delete notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _get_time_ago(dt):
+    """
+    Helper function to get human-readable time ago string
+    """
+    if not dt:
+        return 'Unknown'
+    
+    now = timezone.now()
+    if dt.tzinfo is None:
+        dt = timezone.make_aware(dt)
+    
+    diff = now - dt
+    
+    if diff.days > 0:
+        return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+    elif diff.seconds >= 3600:
+        hours = diff.seconds // 3600
+        return f"{hours} hour{'s' if hours > 1 else ''} ago"
+    elif diff.seconds >= 60:
+        minutes = diff.seconds // 60
+        return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+    else:
+        return "Just now"
 
 
 @api_view(['GET'])
@@ -1488,6 +2800,210 @@ def create_student_profile(request):
 
 
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_profile(request):
+    """
+    Get user profile data - used by frontend USER_PROFILE endpoint
+    Returns same data as get_user_profile_data but in format expected by frontend
+    Updated: 2025-11-29 - Fixed variable scoping and attribute access issues
+    """
+    user = request.user
+    
+    try:
+        print(f"🔍 get_user_profile called for user: {user.username}, role: {user.role}")
+        
+        # Handle student users
+        if user.role == 'Student':
+            # Get student registration data
+            student_registration = None
+            try:
+                student_registration = StudentRegistration.objects.get(student_username=user.username)
+                print(f"✅ Found StudentRegistration: {student_registration.student_id}")
+            except StudentRegistration.DoesNotExist:
+                # Try by email
+                try:
+                    student_registration = StudentRegistration.objects.get(student_email=user.email)
+                    print(f"✅ Found StudentRegistration by email: {student_registration.student_id}")
+                except StudentRegistration.DoesNotExist:
+                    print(f"❌ StudentRegistration not found for username: {user.username} or email: {user.email}")
+                    # Return basic user data if student registration not found
+                    return Response({
+                        'user': {
+                            'firstname': user.firstname,
+                            'lastname': user.lastname,
+                            'email': user.email,
+                            'phonenumber': user.phonenumber or '',
+                            'username': user.username
+                        },
+                        'student_profile': {
+                            'grade': '',
+                            'school': '',
+                            'address': ''
+                        },
+                        'parent_details': {
+                            'parent_name': 'Not provided',
+                            'parent_email': 'Not provided',
+                            'parent_phone': 'Not provided'
+                        }
+                    }, status=status.HTTP_200_OK)
+            
+            if not student_registration:
+                return Response({
+                    'user': {
+                        'firstname': user.firstname,
+                        'lastname': user.lastname,
+                        'email': user.email,
+                        'phonenumber': user.phonenumber or '',
+                        'username': user.username
+                    },
+                    'student_profile': {
+                        'grade': '',
+                        'school': '',
+                        'address': ''
+                    },
+                    'parent_details': {
+                        'parent_name': 'Not provided',
+                        'parent_email': 'Not provided',
+                        'parent_phone': 'Not provided'
+                    }
+                }, status=status.HTTP_200_OK)
+            
+            # Get or create student profile data (auto-create if doesn't exist with registration data)
+            student_profile = None
+            profile_grade = ''
+            profile_school = ''
+            profile_address = ''
+            profile_parent_email = student_registration.parent_email or ''
+            
+            try:
+                student_profile = StudentProfile.objects.get(student_id=student_registration.student_id)
+                print(f"✅ Found StudentProfile: {student_profile.profile_id}")
+                profile_grade = student_profile.grade or ''
+                profile_school = student_profile.school or ''
+                profile_address = student_profile.address or ''
+                profile_parent_email = student_profile.parent_email or profile_parent_email
+            except StudentProfile.DoesNotExist:
+                # Auto-create profile with registration data if it doesn't exist
+                print(f"🆕 Creating StudentProfile for student_id: {student_registration.student_id}")
+                try:
+                    student_profile = StudentProfile.objects.create(
+                        student_id=student_registration.student_id,
+                        student_username=student_registration.student_username,
+                        parent_email=student_registration.parent_email or '',
+                        grade='',
+                        school='',
+                        address=''
+                    )
+                    print(f"✅ Created StudentProfile: {student_profile.profile_id}")
+                    profile_grade = ''
+                    profile_school = ''
+                    profile_address = ''
+                    profile_parent_email = student_profile.parent_email or ''
+                except Exception as profile_error:
+                    print(f"❌ Error creating StudentProfile: {profile_error}")
+                    import traceback
+                    print(traceback.format_exc())
+                    # Use empty values as fallback
+                    student_profile = None
+            
+            # Get parent details automatically if parent_email exists
+            parent_email_to_use = profile_parent_email or (student_registration.parent_email if student_registration else None)
+            
+            print(f"🔍 Looking for parent with email: {parent_email_to_use}")
+            parent_details = {
+                'parent_name': 'Not provided',
+                'parent_email': 'Not provided',
+                'parent_phone': 'Not provided'
+            }
+            
+            if parent_email_to_use and str(parent_email_to_use).strip() and parent_email_to_use != 'no-parent@example.com':
+                try:
+                    parent_registration = ParentRegistration.objects.get(email=parent_email_to_use)
+                    parent_details = {
+                        'parent_name': f"{parent_registration.first_name} {parent_registration.last_name}",
+                        'parent_email': parent_registration.email,
+                        'parent_phone': parent_registration.phone_number or ''
+                    }
+                    print(f"✅ Found parent: {parent_details['parent_name']}")
+                except ParentRegistration.DoesNotExist:
+                    print(f"⚠️ ParentRegistration not found for email: {parent_email_to_use}")
+                    parent_details = {
+                        'parent_name': 'Not provided',
+                        'parent_email': parent_email_to_use or 'Not provided',
+                        'parent_phone': 'Not provided'
+                    }
+            else:
+                print(f"⚠️ No valid parent_email found")
+            
+            # Prioritize phone number from StudentRegistration over User model
+            phone_number = ''
+            if student_registration and student_registration.phone_number:
+                phone_number = student_registration.phone_number
+            elif user.phonenumber:
+                phone_number = user.phonenumber
+            
+            print(f"📞 Phone number from StudentRegistration: {student_registration.phone_number if student_registration else 'N/A'}")
+            print(f"📞 Phone number from User: {user.phonenumber}")
+            print(f"📞 Final phone number: {phone_number}")
+            
+            # Return data in format expected by frontend
+            return Response({
+                'user': {
+                    'firstname': (student_registration.first_name if student_registration and student_registration.first_name else user.firstname),
+                    'lastname': (student_registration.last_name if student_registration and student_registration.last_name else user.lastname),
+                    'email': (student_registration.student_email if student_registration and student_registration.student_email else user.email),
+                    'phonenumber': phone_number,
+                    'username': (student_registration.student_username if student_registration and student_registration.student_username else user.username)
+                },
+                'student_profile': {
+                    'grade': profile_grade,
+                    'school': profile_school,
+                    'address': profile_address
+                },
+                'parent_details': parent_details
+            }, status=status.HTTP_200_OK)
+        
+        # Handle non-student users (parent, teacher, etc.)
+        else:
+            print(f"ℹ️ User is not a student (role: {user.role}), returning basic user data")
+            return Response({
+                'user': {
+                    'firstname': user.firstname,
+                    'lastname': user.lastname,
+                    'email': user.email,
+                    'phonenumber': user.phonenumber or '',
+                    'username': user.username
+                }
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error in get_user_profile: {e}")
+        print(error_trace)
+        return Response({
+            'error': f'Failed to get profile: {str(e)}',
+            'user': {
+                'firstname': user.firstname if user.is_authenticated else '',
+                'lastname': user.lastname if user.is_authenticated else '',
+                'email': user.email if user.is_authenticated else '',
+                'phonenumber': user.phonenumber if user.is_authenticated else '',
+                'username': user.username if user.is_authenticated else ''
+            },
+            'student_profile': {
+                'grade': '',
+                'school': '',
+                'address': ''
+            },
+            'parent_details': {
+                'parent_name': 'Not provided',
+                'parent_email': 'Not provided',
+                'parent_phone': 'Not provided'
+            }
+        }, status=status.HTTP_200_OK)  # Return 200 with error message to prevent frontend crash
+
+
+@api_view(['GET'])
 @permission_classes([permissions.AllowAny])  # Temporarily disabled for testing
 def get_user_profile_data(request):
     """
@@ -1517,39 +3033,49 @@ def get_user_profile_data(request):
     
     try:
         
-        # Get student profile data
+        # Get or create student profile data (auto-create if doesn't exist with registration data)
         try:
             student_profile = StudentProfile.objects.get(student_id=student_registration.student_id)
             profile_data = {
-                'student_username': student_profile.student_username,
-                'parent_email': student_profile.parent_email,
-                'grade': student_profile.grade,
-                'school': student_profile.school,
-                'address': student_profile.address
+                'student_username': student_profile.student_username or student_registration.student_username,
+                'parent_email': student_profile.parent_email or student_registration.parent_email,
+                'grade': student_profile.grade or '',
+                'school': student_profile.school or '',
+                'address': student_profile.address or ''
             }
         except StudentProfile.DoesNotExist:
+            # Auto-create profile with registration data if it doesn't exist
+            student_profile = StudentProfile.objects.create(
+                student_id=student_registration.student_id,
+                student_username=student_registration.student_username,
+                parent_email=student_registration.parent_email,
+                grade='',
+                school='',
+                address=''
+            )
             profile_data = {
-                'student_username': '',
-                'parent_email': '',
-                'grade': '',
-                'school': '',
-                'address': ''
+                'student_username': student_profile.student_username,
+                'parent_email': student_profile.parent_email,
+                'grade': student_profile.grade or '',
+                'school': student_profile.school or '',
+                'address': student_profile.address or ''
             }
         
-        # Get parent details automatically if parent_email exists
+        # Get parent details automatically if parent_email exists - use parent_email from profile or registration
+        parent_email_to_use = (student_profile.parent_email if student_profile.parent_email else student_registration.parent_email)
         parent_details = {}
-        if student_registration.parent_email and student_registration.parent_email != 'no-parent@example.com':
+        if parent_email_to_use and parent_email_to_use != 'no-parent@example.com' and parent_email_to_use.strip():
             try:
-                parent_registration = ParentRegistration.objects.get(email=student_registration.parent_email)
+                parent_registration = ParentRegistration.objects.get(email=parent_email_to_use)
                 parent_details = {
                     'parent_name': f"{parent_registration.first_name} {parent_registration.last_name}",
                     'parent_email': parent_registration.email,
-                    'parent_phone': parent_registration.phone_number
+                    'parent_phone': parent_registration.phone_number or ''
                 }
             except ParentRegistration.DoesNotExist:
                 parent_details = {
                     'parent_name': 'Not provided',
-                    'parent_email': 'Not provided',
+                    'parent_email': parent_email_to_use or 'Not provided',
                     'parent_phone': 'Not provided'
                 }
         else:
@@ -1559,22 +3085,24 @@ def get_user_profile_data(request):
                 'parent_phone': 'Not provided'
             }
         
-        # Prepare user data
+        # Prepare user data - prioritize StudentRegistration data over User model
         if user.is_authenticated:
+            # Prioritize phone number from StudentRegistration
+            phone_number = student_registration.phone_number or user.phonenumber or ''
             user_data = {
-                'firstname': user.firstname,
-                'lastname': user.lastname,
-                'email': user.email,
-                'phonenumber': user.phonenumber,
-                'username': user.username
+                'firstname': student_registration.first_name or user.firstname,
+                'lastname': student_registration.last_name or user.lastname,
+                'email': student_registration.student_email or user.email,
+                'phonenumber': phone_number,
+                'username': student_registration.student_username or user.username
             }
         else:
             # Use student registration data for unauthenticated requests
             user_data = {
                 'firstname': student_registration.first_name,
                 'lastname': student_registration.last_name,
-                'email': student_registration.student_email,
-                'phonenumber': student_registration.phone_number,
+                'email': student_registration.student_email or '',
+                'phonenumber': student_registration.phone_number or '',
                 'username': student_registration.student_username
             }
         
@@ -1583,10 +3111,10 @@ def get_user_profile_data(request):
             'student_registration': {
                 'first_name': student_registration.first_name,
                 'last_name': student_registration.last_name,
-                'phone_number': student_registration.phone_number,
-                'student_email': student_registration.student_email,
+                'phone_number': student_registration.phone_number or '',
+                'student_email': student_registration.student_email or '',
                 'student_username': student_registration.student_username,
-                'parent_email': student_registration.parent_email
+                'parent_email': student_registration.parent_email or ''
             },
             'student_profile': profile_data,
             'parent_details': parent_details
@@ -3037,4 +4565,443 @@ def recalculate_leaderboard(request):
         print(traceback.format_exc())
         return Response({
             'error': f'Failed to recalculate leaderboard: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_teacher_profile(request):
+    """
+    Get teacher profile for the authenticated teacher user
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get or create teacher profile
+        teacher_profile, created = TeacherProfile.objects.get_or_create(
+            teacher_id=teacher_reg.teacher_id,
+            defaults={
+                'teacher_username': teacher_reg.teacher_username,
+                'teacher_name': f"{teacher_reg.first_name} {teacher_reg.last_name}",
+                'email': teacher_reg.email,
+                'phone_number': teacher_reg.phone_number,
+            }
+        )
+        
+        # If profile was just created or missing basic info, update from registration
+        if created or not teacher_profile.teacher_name or not teacher_profile.email:
+            teacher_profile.teacher_username = teacher_reg.teacher_username
+            if not teacher_profile.teacher_name:
+                teacher_profile.teacher_name = f"{teacher_reg.first_name} {teacher_reg.last_name}"
+            if not teacher_profile.email:
+                teacher_profile.email = teacher_reg.email
+            if not teacher_profile.phone_number:
+                teacher_profile.phone_number = teacher_reg.phone_number
+            teacher_profile.save()
+        
+        # Serialize and return
+        serializer = TeacherProfileSerializer(teacher_profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error in get_teacher_profile: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to fetch teacher profile: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT', 'PATCH', 'POST'])
+@permission_classes([permissions.IsAuthenticated])
+def update_teacher_profile(request):
+    """
+    Update teacher profile for the authenticated teacher user
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get or create teacher profile
+        teacher_profile, created = TeacherProfile.objects.get_or_create(
+            teacher_id=teacher_reg.teacher_id,
+            defaults={
+                'teacher_username': teacher_reg.teacher_username,
+                'teacher_name': f"{teacher_reg.first_name} {teacher_reg.last_name}",
+                'email': teacher_reg.email,
+                'phone_number': teacher_reg.phone_number,
+            }
+        )
+        
+        # Update profile with request data
+        serializer = TeacherProfileSerializer(teacher_profile, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Teacher profile updated successfully',
+                'profile': serializer.data
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Validation failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error in update_teacher_profile: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to update teacher profile: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_teacher_students(request):
+    """
+    Get all students with their quiz and mock test scores for the authenticated teacher
+    Calculates scores using the same logic as the student portal career page
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_teacher_students called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            print(f"❌ Access denied: User {user.username} is not a teacher (role: {user.role})")
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            print(f"❌ Teacher registration not found for user: {user.username}")
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get teacher profile to get school
+        teacher_school = None
+        try:
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+            # Clean the school name (strip whitespace, handle empty strings)
+            if teacher_school:
+                teacher_school = teacher_school.strip()
+            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}'")
+        except TeacherProfile.DoesNotExist:
+            print(f"⚠️ Teacher profile not found for teacher_id: {teacher_reg.teacher_id}")
+            return Response({
+                'error': 'Teacher profile not found. Please complete your teacher profile setup.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Filter students by school if teacher has a school
+        if teacher_school and teacher_school != '':
+            # Get student IDs from StudentProfile that match the teacher's school (case-insensitive, trimmed)
+            # Use __iexact for case-insensitive matching and handle whitespace
+            student_profiles = StudentProfile.objects.filter(
+                school__iexact=teacher_school
+            ).exclude(school__isnull=True).exclude(school='')
+            
+            student_ids = [profile.student_id for profile in student_profiles]
+            print(f"📋 Found {len(student_ids)} student profiles matching school '{teacher_school}'")
+            
+            # Debug: Print all student profiles to see what schools exist
+            all_profiles = StudentProfile.objects.all()
+            print(f"🔍 DEBUG: Total student profiles in database: {all_profiles.count()}")
+            for profile in all_profiles[:10]:  # Print first 10 for debugging
+                print(f"   Student ID {profile.student_id}: school='{profile.school}'")
+            
+            if student_ids:
+                students = StudentRegistration.objects.filter(student_id__in=student_ids)
+                print(f"📊 Found {students.count()} students from school '{teacher_school}' (student IDs: {student_ids})")
+            else:
+                # No students found with matching school
+                students = StudentRegistration.objects.none()
+                print(f"⚠️ No students found with school '{teacher_school}'")
+                print(f"💡 Tip: Make sure students have StudentProfile records with matching school name")
+        else:
+            # If teacher has no school, return error (don't return all students)
+            print(f"❌ Teacher has no school assigned (school='{teacher_school}')")
+            return Response({
+                'error': 'Teacher has no school assigned. Please update your teacher profile with a school name.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        students_data = []
+        
+        for student in students:
+            try:
+                # Get user info if available
+                try:
+                    user_obj = User.objects.get(username=student.student_username)
+                    user_info = {
+                        'firstname': user_obj.firstname,
+                        'lastname': user_obj.lastname,
+                        'email': user_obj.email
+                    }
+                except User.DoesNotExist:
+                    user_info = {
+                        'firstname': student.first_name,
+                        'lastname': student.last_name,
+                        'email': student.student_email or ''
+                    }
+                
+                # Import quiz models
+                from quizzes.models import QuizAttempt, MockTestAttempt
+                
+                # Get all quiz and mock test attempts for this student
+                # Try both by object and by ID to ensure we find all attempts
+                quiz_attempts = QuizAttempt.objects.filter(student_id=student.student_id)
+                mock_test_attempts = MockTestAttempt.objects.filter(student_id=student.student_id)
+                
+                print(f"   📝 Student {student.student_username} (ID: {student.student_id}): {len(quiz_attempts)} quiz attempts, {len(mock_test_attempts)} mock test attempts")
+                
+                # Debug: Print attempt details
+                if len(quiz_attempts) > 0:
+                    for attempt in quiz_attempts:
+                        print(f"      📊 Quiz attempt {attempt.attempt_id}: score={attempt.score}, total_questions={attempt.total_questions}, correct_answers={attempt.correct_answers}")
+                if len(mock_test_attempts) > 0:
+                    for attempt in mock_test_attempts:
+                        print(f"      📊 Mock attempt {attempt.attempt_id}: score={attempt.score}, total_questions={attempt.total_questions}, correct_answers={attempt.correct_answers}")
+                
+                # Calculate quiz score: (total_correct_answers / total_questions_answered) * 100
+                # Handle both new attempts (with total_questions/correct_answers) and old attempts (with only score)
+                total_quiz_questions_answered = 0
+                total_quiz_correct_answers = 0
+                quiz_scores_from_field = []
+                
+                for attempt in quiz_attempts:
+                    # New format: has total_questions and correct_answers
+                    if attempt.total_questions and attempt.total_questions > 0:
+                        total_quiz_questions_answered += attempt.total_questions
+                        if attempt.correct_answers is not None:
+                            total_quiz_correct_answers += attempt.correct_answers
+                        print(f"      ✅ Using new format: total_q={attempt.total_questions}, correct={attempt.correct_answers}")
+                    # Old format: only has score, assume 10 questions per quiz (standard quiz size)
+                    elif attempt.score is not None and attempt.score >= 0:
+                        # For old attempts, score is typically the number of correct answers out of 10
+                        quiz_scores_from_field.append(attempt.score)
+                        # Assume 10 questions if not specified
+                        total_quiz_questions_answered += 10
+                        total_quiz_correct_answers += attempt.score
+                        print(f"      ✅ Using old format: score={attempt.score}, assuming 10 questions")
+                    else:
+                        print(f"      ⚠️ Skipping attempt {attempt.attempt_id}: no usable data")
+                
+                quiz_score = None
+                if total_quiz_questions_answered > 0:
+                    quiz_percentage = (total_quiz_correct_answers / total_quiz_questions_answered) * 100
+                    quiz_score = round(quiz_percentage, 1)
+                    print(f"      📈 Calculated quiz_score: ({total_quiz_correct_answers}/{total_quiz_questions_answered}) * 100 = {quiz_score}%")
+                elif quiz_scores_from_field:
+                    # Fallback: if we only have scores, calculate percentage assuming 10 questions per quiz
+                    avg_score = sum(quiz_scores_from_field) / len(quiz_scores_from_field)
+                    quiz_score = round((avg_score / 10) * 100, 1)
+                    print(f"      📈 Calculated quiz_score from avg: ({avg_score}/10) * 100 = {quiz_score}%")
+                else:
+                    print(f"      ⚠️ No quiz score calculated: total_q={total_quiz_questions_answered}, scores={quiz_scores_from_field}")
+                
+                # Calculate mock test score: (mock_test_correct_answers / mock_test_questions_answered) * 100
+                # Handle both new attempts (with total_questions/correct_answers) and old attempts (with only score)
+                total_mock_test_questions_answered = 0
+                total_mock_test_correct_answers = 0
+                mock_scores_from_field = []
+                
+                for attempt in mock_test_attempts:
+                    # New format: has total_questions and correct_answers
+                    if attempt.total_questions and attempt.total_questions > 0:
+                        total_mock_test_questions_answered += attempt.total_questions
+                        if attempt.correct_answers is not None:
+                            total_mock_test_correct_answers += attempt.correct_answers
+                    # Old format: only has score, assume 50 questions per mock test (standard mock test size)
+                    elif attempt.score is not None and attempt.score >= 0:
+                        # For old attempts, score is typically the number of correct answers out of 50
+                        mock_scores_from_field.append(attempt.score)
+                        # Assume 50 questions if not specified
+                        total_mock_test_questions_answered += 50
+                        total_mock_test_correct_answers += attempt.score
+                
+                mock_score = None
+                if total_mock_test_questions_answered > 0:
+                    mock_percentage = (total_mock_test_correct_answers / total_mock_test_questions_answered) * 100
+                    mock_score = round(mock_percentage, 1)
+                elif mock_scores_from_field:
+                    # Fallback: if we only have scores, calculate percentage assuming 50 questions per mock test
+                    avg_score = sum(mock_scores_from_field) / len(mock_scores_from_field)
+                    mock_score = round((avg_score / 50) * 100, 1)
+                
+                # Calculate average score: (quiz_score + mock_score) / 2
+                average_score = None
+                valid_scores = []
+                if quiz_score is not None:
+                    valid_scores.append(quiz_score)
+                if mock_score is not None:
+                    valid_scores.append(mock_score)
+                
+                if valid_scores:
+                    average_score = round(sum(valid_scores) / len(valid_scores), 1)
+                
+                print(f"   ✅ Student {student.student_username} scores: quiz={quiz_score}, mock={mock_score}, avg={average_score}")
+                
+                # Get completion dates (latest attempt dates)
+                quiz_completion_date = None
+                if quiz_attempts.exists():
+                    latest_quiz = quiz_attempts.order_by('-attempted_at').first()
+                    if latest_quiz and latest_quiz.attempted_at:
+                        quiz_completion_date = latest_quiz.attempted_at.strftime('%Y-%m-%d')
+                
+                mock_completion_date = None
+                if mock_test_attempts.exists():
+                    latest_mock = mock_test_attempts.order_by('-attempted_at').first()
+                    if latest_mock and latest_mock.attempted_at:
+                        mock_completion_date = latest_mock.attempted_at.strftime('%Y-%m-%d')
+                
+                # Calculate real time spent (from time_taken_seconds)
+                total_quiz_time_seconds = sum(a.time_taken_seconds or 0 for a in quiz_attempts)
+                total_mock_time_seconds = sum(a.time_taken_seconds or 0 for a in mock_test_attempts)
+                total_quiz_time_minutes = int(total_quiz_time_seconds / 60)
+                total_mock_time_minutes = int(total_mock_time_seconds / 60)
+                
+                # Calculate subject-wise performance - ALWAYS include all 5 subjects
+                subject_performance = {}
+                subject_mapping = {
+                    'mathematics': ['mathematics', 'math', 'maths', 'Mathematics', 'Math', 'MATHS'],
+                    'english': ['english', 'English', 'ENGLISH'],
+                    'science': ['science', 'Science', 'SCIENCE'],
+                    'social': ['social', 'social studies', 'Social', 'Social Studies', 'SOCIAL'],
+                    'computer': ['computer', 'computers', 'Computer', 'Computers', 'COMPUTER', 'COMPUTERS']
+                }
+                
+                # Always process all 5 subjects
+                for subject_key, subject_variants in subject_mapping.items():
+                    # Get quiz attempts for this subject (case-insensitive matching)
+                    subject_quiz_attempts = []
+                    for attempt in quiz_attempts:
+                        if attempt.subject:
+                            attempt_subject_lower = attempt.subject.strip().lower()
+                            if any(variant.lower() == attempt_subject_lower for variant in subject_variants):
+                                subject_quiz_attempts.append(attempt)
+                    
+                    # Get mock test attempts for this subject (case-insensitive matching)
+                    subject_mock_attempts = []
+                    for attempt in mock_test_attempts:
+                        if attempt.subject:
+                            attempt_subject_lower = attempt.subject.strip().lower()
+                            if any(variant.lower() == attempt_subject_lower for variant in subject_variants):
+                                subject_mock_attempts.append(attempt)
+                    
+                    # Calculate subject quiz score
+                    subject_quiz_total_q = sum(a.total_questions or 0 for a in subject_quiz_attempts)
+                    subject_quiz_total_correct = sum(a.correct_answers or 0 for a in subject_quiz_attempts)
+                    subject_quiz_score = None
+                    if subject_quiz_total_q > 0:
+                        subject_quiz_score = round((subject_quiz_total_correct / subject_quiz_total_q) * 100, 1)
+                    
+                    # Calculate subject mock score
+                    subject_mock_total_q = sum(a.total_questions or 0 for a in subject_mock_attempts)
+                    subject_mock_total_correct = sum(a.correct_answers or 0 for a in subject_mock_attempts)
+                    subject_mock_score = None
+                    if subject_mock_total_q > 0:
+                        subject_mock_score = round((subject_mock_total_correct / subject_mock_total_q) * 100, 1)
+                    
+                    # Calculate real time spent from attempts
+                    subject_quiz_time = sum(a.time_taken_seconds or 0 for a in subject_quiz_attempts)
+                    subject_mock_time = sum(a.time_taken_seconds or 0 for a in subject_mock_attempts)
+                    total_time_minutes = int((subject_quiz_time + subject_mock_time) / 60)
+                    
+                    # Calculate overall subject score (average of quiz and mock if both exist)
+                    subject_average = None
+                    if subject_quiz_score is not None and subject_mock_score is not None:
+                        subject_average = round((subject_quiz_score + subject_mock_score) / 2, 1)
+                    elif subject_quiz_score is not None:
+                        subject_average = subject_quiz_score
+                    elif subject_mock_score is not None:
+                        subject_average = subject_mock_score
+                    
+                    # ALWAYS include the subject, even if no data (for UI consistency)
+                    subject_performance[subject_key] = {
+                        'score': subject_average,
+                        'quiz_score': subject_quiz_score,
+                        'mock_score': subject_mock_score,
+                        'time_minutes': total_time_minutes,
+                        'status': 'Complete' if subject_average is not None else 'Pending',
+                        'quiz_attempts': len(subject_quiz_attempts),
+                        'mock_attempts': len(subject_mock_attempts)
+                    }
+                
+                student_data = {
+                    'student_id': student.student_id,
+                    'student_username': student.student_username,
+                    'first_name': student.first_name,
+                    'last_name': student.last_name,
+                    'student_email': student.student_email,
+                    'user_info': user_info,
+                    'quiz_score': quiz_score,
+                    'mock_score': mock_score,
+                    'average_score': average_score,
+                    'quiz_attempts_count': len(quiz_attempts),
+                    'mock_attempts_count': len(mock_test_attempts),
+                    'quiz_completion_date': quiz_completion_date,
+                    'mock_completion_date': mock_completion_date,
+                    'quiz_time_minutes': total_quiz_time_minutes,
+                    'mock_time_minutes': total_mock_time_minutes,
+                    'subject_performance': subject_performance
+                }
+                
+                students_data.append(student_data)
+                
+            except Exception as e:
+                print(f"❌ Error processing student {student.student_id}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                # Continue with other students even if one fails
+                continue
+        
+        print(f"✅ Returning {len(students_data)} students with scores")
+        
+        # Debug: Print summary of scores being returned
+        for student_data in students_data:
+            print(f"   📤 Returning student {student_data['student_id']}: quiz_score={student_data.get('quiz_score')}, mock_score={student_data.get('mock_score')}, avg_score={student_data.get('average_score')}")
+        
+        return Response({
+            'students': students_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_teacher_students: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to fetch teacher students: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { API_CONFIG, djangoAPI } from '../../config/api';
 
 const UserList = () => {
   const navigate = useNavigate();
@@ -10,6 +11,19 @@ const UserList = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // State for students data
+  const [studentOverview, setStudentOverview] = useState([]);
+  const [parentOverview, setParentOverview] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [parentLoading, setParentLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    activeStudents: 0,
+    totalParents: 0,
+    averagePerformance: 0
+  });
 
   // Update time every second
   useEffect(() => {
@@ -19,20 +33,106 @@ const UserList = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Mock data for overview
-  const studentOverview = [
-    { id: 1, name: 'John Doe', email: 'john@example.com', status: 'active', performance: 'excellent' },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com', status: 'active', performance: 'good' },
-    { id: 3, name: 'Mike Johnson', email: 'mike@example.com', status: 'active', performance: 'average' },
-    { id: 4, name: 'Sarah Wilson', email: 'sarah@example.com', status: 'active', performance: 'excellent' }
-  ];
+  // Fetch students and parents data from API
+  useEffect(() => {
+    fetchTeacherStudents();
+    fetchTeacherParents();
+  }, []);
 
-  const parentOverview = [
-    { id: 1, name: 'Robert Doe', childName: 'John Doe', performance: 'excellent', unreadMessages: 2 },
-    { id: 2, name: 'Michael Smith', childName: 'Jane Smith', performance: 'good', unreadMessages: 1 },
-    { id: 3, name: 'David Johnson', childName: 'Mike Johnson', performance: 'average', unreadMessages: 0 },
-    { id: 4, name: 'James Wilson', childName: 'Sarah Wilson', performance: 'excellent', unreadMessages: 3 }
-  ];
+  const fetchTeacherStudents = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_STUDENTS);
+      
+      if (response && response.students) {
+        // Transform API data to match component format
+        const transformedStudents = response.students.map((student, index) => {
+          const userInfo = student.user_info || {};
+          const profile = student.profile || {};
+          
+          return {
+            id: student.student_id || index + 1,
+            name: `${userInfo.firstname || student.first_name || ''} ${userInfo.lastname || student.last_name || ''}`.trim() || 'Unknown Student',
+            email: userInfo.email || student.student_email || '',
+            status: 'active', // Default status, can be enhanced later
+            performance: 'good', // Default performance, can be calculated from quiz data later
+            grade: profile.grade || '',
+            school: profile.school || '',
+            address: profile.address || '',
+            phone: userInfo.phone || student.phone_number || ''
+          };
+        });
+        
+        setStudentOverview(transformedStudents);
+        
+        // Update stats (parent count will be updated by fetchTeacherParents)
+        setStats(prevStats => ({
+          ...prevStats,
+          totalStudents: response.total_count || transformedStudents.length,
+          activeStudents: transformedStudents.length, // All fetched students are considered active
+          averagePerformance: 82 // Default, can be calculated from performance data
+        }));
+      } else {
+        setStudentOverview([]);
+        setStats({
+          totalStudents: 0,
+          activeStudents: 0,
+          totalParents: 0,
+          averagePerformance: 0
+        });
+      }
+    } catch (err) {
+      console.error('❌ Error fetching teacher students:', err);
+      setError(err.message || 'Failed to fetch students');
+      setStudentOverview([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTeacherParents = async () => {
+    try {
+      setParentLoading(true);
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_PARENTS);
+      
+      if (response && response.parents) {
+        // Transform API data to match component format
+        const transformedParents = response.parents.map((parent, index) => {
+          return {
+            id: parent.parent_id || index + 1,
+            name: parent.parent_name || 'Unknown Parent',
+            childName: parent.child_name || 'N/A',
+            performance: parent.child_performance || 'average',
+            unreadMessages: parent.unread_messages || 0
+          };
+        });
+        
+        setParentOverview(transformedParents);
+        
+        // Update stats with parent count
+        setStats(prevStats => ({
+          ...prevStats,
+          totalParents: response.total_count || transformedParents.length
+        }));
+      } else {
+        setParentOverview([]);
+        setStats(prevStats => ({
+          ...prevStats,
+          totalParents: 0
+        }));
+      }
+    } catch (err) {
+      console.error('❌ Error fetching teacher parents:', err);
+      setParentOverview([]);
+      setStats(prevStats => ({
+        ...prevStats,
+        totalParents: 0
+      }));
+    } finally {
+      setParentLoading(false);
+    }
+  };
 
   const handleStudentDetails = () => {
     navigate('/teacher/student-details');
@@ -276,12 +376,12 @@ const UserList = () => {
         <div style={statsContainerStyle}>
           <div style={statCardStyle}>
             <div style={statLabelStyle}>{t('totalStudents')}</div>
-            <div style={statValueStyle}>45</div>
-            <div style={{...statLabelStyle, color: '#3CB371'}}>38 {t('active')}</div>
+            <div style={statValueStyle}>{stats.totalStudents}</div>
+            <div style={{...statLabelStyle, color: '#3CB371'}}>{stats.activeStudents} {t('active')}</div>
           </div>
           <div style={statCardStyle}>
             <div style={statLabelStyle}>{t('totalParents')}</div>
-            <div style={statValueStyle}>45</div>
+            <div style={statValueStyle}>{stats.totalParents}</div>
             <div style={{...statLabelStyle, color: '#3CB371'}}>{t('allConnected')}</div>
           </div>
           <div style={statCardStyle}>
@@ -291,7 +391,7 @@ const UserList = () => {
           </div>
           <div style={statCardStyle}>
             <div style={statLabelStyle}>{t('avgPerformance')}</div>
-            <div style={statValueStyle}>82%</div>
+            <div style={statValueStyle}>{stats.averagePerformance}%</div>
             <div style={{...statLabelStyle, color: '#4DD0E1'}}>{t('classAverage')}</div>
           </div>
         </div>
@@ -319,43 +419,91 @@ const UserList = () => {
               <span>📊</span>
               {t('studentsOverview')} - {t('recentActivities')}
             </h2>
-            <div style={tableContainerStyle}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>{t('studentName')}</th>
-                    <th style={thStyle}>{t('email')}</th>
-                    <th style={thStyle}>{t('status')}</th>
-                    <th style={thStyle}>{t('performance')}</th>
-                    <th style={thStyle}>{t('lastActivity')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {studentOverview.map((student) => (
-                    <tr 
-                      key={student.id}
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? 'rgba(45, 93, 123, 0.2)' : 'rgba(45, 93, 123, 0.05)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <td style={tdStyle}>{student.name}</td>
-                      <td style={tdStyle}>{student.email}</td>
-                      <td style={tdStyle}>
-                        <span style={statusBadgeStyle(student.status)}>
-                          {t(student.status)}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={performanceBadgeStyle(student.performance)}>
-                          {t(student.performance)}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>2 {t('hoursAgo')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '40px', color: darkMode ? '#e2e8f0' : '#222831' }}>
+                {t('loading') || 'Loading students...'}
+              </div>
+            )}
+            
+            {error && (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '20px', 
+                backgroundColor: darkMode ? '#7f1d1d' : '#fee2e2',
+                color: darkMode ? '#fca5a5' : '#991b1b',
+                borderRadius: '8px',
+                marginBottom: '20px'
+              }}>
+                {t('error') || 'Error'}: {error}
+                <button 
+                  onClick={fetchTeacherStudents}
+                  style={{
+                    marginLeft: '10px',
+                    padding: '8px 16px',
+                    backgroundColor: '#2D5D7B',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {t('retry') || 'Retry'}
+                </button>
+              </div>
+            )}
+            
+            {!loading && !error && (
+              <div style={tableContainerStyle}>
+                {studentOverview.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: darkMode ? '#e2e8f0' : '#222831' }}>
+                    {t('noStudentsFound') || 'No students found. Please ensure your school name is set in your profile and students have matching school names.'}
+                  </div>
+                ) : (
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>{t('studentName')}</th>
+                        <th style={thStyle}>{t('email')}</th>
+                        <th style={thStyle}>{t('status')}</th>
+                        <th style={thStyle}>{t('performance')}</th>
+                        <th style={thStyle}>{t('lastActivity')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {studentOverview
+                        .filter(student => 
+                          !searchTerm || 
+                          student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          student.email.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((student) => (
+                        <tr 
+                          key={student.id}
+                          style={{ cursor: 'pointer' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? 'rgba(45, 93, 123, 0.2)' : 'rgba(45, 93, 123, 0.05)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <td style={tdStyle}>{student.name}</td>
+                          <td style={tdStyle}>{student.email}</td>
+                          <td style={tdStyle}>
+                            <span style={statusBadgeStyle(student.status)}>
+                              {t(student.status)}
+                            </span>
+                          </td>
+                          <td style={tdStyle}>
+                            <span style={performanceBadgeStyle(student.performance)}>
+                              {t(student.performance)}
+                            </span>
+                          </td>
+                          <td style={tdStyle}>2 {t('hoursAgo')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -366,47 +514,68 @@ const UserList = () => {
               <span>👨‍👩‍👧‍👦</span>
               {t('parentsOverview')} - {t('communicationStatus')}
             </h2>
-            <div style={tableContainerStyle}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>{t('parentName')}</th>
-                    <th style={thStyle}>{t('childName')}</th>
-                    <th style={thStyle}>{t('childPerformance')}</th>
-                    <th style={thStyle}>{t('unreadMessages')}</th>
-                    <th style={thStyle}>{t('lastContact')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parentOverview.map((parent) => (
-                    <tr 
-                      key={parent.id}
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? 'rgba(45, 93, 123, 0.2)' : 'rgba(45, 93, 123, 0.05)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <td style={tdStyle}>{parent.name}</td>
-                      <td style={tdStyle}>{parent.childName}</td>
-                      <td style={tdStyle}>
-                        <span style={performanceBadgeStyle(parent.performance)}>
-                          {t(parent.performance)}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>
-                        {parent.unreadMessages > 0 ? (
-                          <span style={messageBadgeStyle}>
-                            {parent.unreadMessages}
-                          </span>
-                        ) : (
-                          t('none')
-                        )}
-                      </td>
-                      <td style={tdStyle}>1 {t('dayAgo')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            
+            {parentLoading && (
+              <div style={{ textAlign: 'center', padding: '40px', color: darkMode ? '#e2e8f0' : '#222831' }}>
+                {t('loading') || 'Loading parents...'}
+              </div>
+            )}
+            
+            {!parentLoading && (
+              <div style={tableContainerStyle}>
+                {parentOverview.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: darkMode ? '#e2e8f0' : '#222831' }}>
+                    {t('noParentsFound') || 'No parents found. Parents will appear here when students from your school are linked to parent accounts.'}
+                  </div>
+                ) : (
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>{t('parentName')}</th>
+                        <th style={thStyle}>{t('childName')}</th>
+                        <th style={thStyle}>{t('childPerformance')}</th>
+                        <th style={thStyle}>{t('unreadMessages')}</th>
+                        <th style={thStyle}>{t('lastContact')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parentOverview
+                        .filter(parent => 
+                          !searchTerm || 
+                          parent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          parent.childName.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((parent) => (
+                        <tr 
+                          key={parent.id}
+                          style={{ cursor: 'pointer' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? 'rgba(45, 93, 123, 0.2)' : 'rgba(45, 93, 123, 0.05)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <td style={tdStyle}>{parent.name}</td>
+                          <td style={tdStyle}>{parent.childName}</td>
+                          <td style={tdStyle}>
+                            <span style={performanceBadgeStyle(parent.performance)}>
+                              {t(parent.performance)}
+                            </span>
+                          </td>
+                          <td style={tdStyle}>
+                            {parent.unreadMessages > 0 ? (
+                              <span style={messageBadgeStyle}>
+                                {parent.unreadMessages}
+                              </span>
+                            ) : (
+                              t('none')
+                            )}
+                          </td>
+                          <td style={tdStyle}>1 {t('dayAgo')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </div>
         )}
 

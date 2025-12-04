@@ -2258,12 +2258,7 @@ const ParentDashboard = () => {
     
     fetchParentData();
    
-    setNotifications([
-      { id: 1, title: t('notifications.newAssignment'), message: t('notifications.assignmentMessage'), time: t('notifications.hoursAgo', { count: 2 }), read: false },
-      { id: 2, title: t('notifications.progressReport'), message: t('notifications.progressMessage'), time: t('notifications.daysAgo', { count: 1 }), read: false },
-      { id: 3, title: t('notifications.parentMeeting'), message: t('notifications.meetingMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-      { id: 4, title: t('notifications.attendance'), message: t('notifications.attendanceMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-    ]);
+    // Notifications will be fetched from API in separate useEffect
    
     const savedTheme = localStorage.getItem('themePreference');
     if (savedTheme === 'dark') {
@@ -2396,15 +2391,61 @@ const ParentDashboard = () => {
     fetchProgressData();
   }, []);
 
-  // Update notifications when language changes
+  // Fetch parent notifications from API
+  const fetchNotifications = async () => {
+    try {
+      // Get child email from localStorage (stored during parent login)
+      const childEmail = getChildEmailForParent();
+      
+      console.log('🔍 Fetching notifications for child email:', childEmail);
+      
+      // Build URL with child_email query param if available
+      let url = API_CONFIG.DJANGO.AUTH.PARENT_NOTIFICATIONS;
+      if (childEmail) {
+        url = `${url}?child_email=${encodeURIComponent(childEmail)}`;
+      }
+      
+      console.log('🔍 Notification API URL:', url);
+      const response = await djangoAPI.get(url);
+      console.log('🔍 Notification API Response:', response);
+      
+      if (response && response.notifications) {
+        // Transform API response to match component format
+        const transformedNotifications = response.notifications.map(notif => ({
+          id: notif.notification_id,
+          title: notif.title,
+          message: notif.message,
+          time: notif.time_ago || 'Just now',
+          read: notif.is_read,
+          student_name: notif.student_name || 'Your child',
+          teacher_name: notif.teacher_name || 'Teacher',
+          created_at: notif.created_at,
+          notification_id: notif.notification_id
+        }));
+        
+        console.log('🔍 Transformed notifications:', transformedNotifications);
+        setNotifications(transformedNotifications);
+      } else {
+        console.log('🔍 No notifications found in response');
+        setNotifications([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching parent notifications:', error);
+      console.error('❌ Error details:', error.response?.data || error.message);
+      setNotifications([]);
+    }
+  };
+
   useEffect(() => {
-    setNotifications([
-      { id: 1, title: t('notifications.newAssignment'), message: t('notifications.assignmentMessage'), time: t('notifications.hoursAgo', { count: 2 }), read: false },
-      { id: 2, title: t('notifications.progressReport'), message: t('notifications.progressMessage'), time: t('notifications.daysAgo', { count: 1 }), read: false },
-      { id: 3, title: t('notifications.parentMeeting'), message: t('notifications.meetingMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-      { id: 4, title: t('notifications.attendance'), message: t('notifications.attendanceMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-    ]);
+    fetchNotifications();
   }, [i18n.language, t]);
+
+  // Refresh notifications when dropdown is opened
+  useEffect(() => {
+    if (showNotifications) {
+      fetchNotifications();
+    }
+  }, [showNotifications]);
 
   const handleInputChange = (field, value) => {
     setEditedParentData(prev => ({
@@ -2548,10 +2589,35 @@ const ParentDashboard = () => {
     return t('dashboard.greeting.evening');
   };
 
-  const markNotificationAsRead = (id) => {
-    setNotifications(notifications.map(notification =>
-      notification.id === id ? { ...notification, read: true } : notification
-    ));
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      // Call API to mark as read
+      await djangoAPI.post(API_CONFIG.DJANGO.AUTH.MARK_PARENT_NOTIFICATION_READ(notificationId));
+      
+      // Update local state
+      setNotifications(notifications.map(notification =>
+        notification.notification_id === notificationId ? { ...notification, read: true } : notification
+      ));
+    } catch (error) {
+      console.error('❌ Error marking notification as read:', error);
+      // Still update UI even if API call fails
+      setNotifications(notifications.map(notification =>
+        notification.notification_id === notificationId ? { ...notification, read: true } : notification
+      ));
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId, e) => {
+    e.stopPropagation(); // Prevent triggering markAsRead
+    try {
+      await djangoAPI.delete(API_CONFIG.DJANGO.AUTH.DELETE_PARENT_NOTIFICATION(notificationId));
+      
+      // Remove from local state
+      setNotifications(notifications.filter(notif => notif.notification_id !== notificationId));
+    } catch (error) {
+      console.error('❌ Error deleting notification:', error);
+      alert('Failed to delete notification. Please try again.');
+    }
   };
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
@@ -2820,9 +2886,14 @@ const ParentDashboard = () => {
                 <button
                   className="action-btn"
                   onClick={() => {
-                    setShowNotifications(!showNotifications);
+                    const newState = !showNotifications;
+                    setShowNotifications(newState);
                     setShowSettings(false);
                     setShowLanguageDropdown(false);
+                    // Refresh notifications when opening dropdown
+                    if (newState) {
+                      fetchNotifications();
+                    }
                   }}
                 >
                   <FiBell />
@@ -2837,12 +2908,6 @@ const ParentDashboard = () => {
                       <h3 style={{ margin: 0, flex: 1 }}>{t('common.notifications')}</h3>
                       <div className="header-actions-right" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                         <button
-                          className="clear-all-btn"
-                          onClick={() => setNotifications([])}
-                        >
-                          {t('common.clear')}
-                        </button>
-                        <button
                           className="close-dropdown-btn"
                           onClick={() => setShowNotifications(false)}
                           style={{ fontSize: "1.2rem" }}
@@ -2855,20 +2920,73 @@ const ParentDashboard = () => {
                       {notifications.length > 0 ? (
                         notifications.map(notification => (
                           <div
-                            key={notification.id}
+                            key={notification.notification_id || notification.id}
                             className={`notification-item ${notification.read ? 'read' : 'unread'}`}
-                            onClick={() => markNotificationAsRead(notification.id)}
+                            style={{
+                              backgroundColor: notification.read ? '#FFFFFF' : '#F0F9FF',
+                              borderLeft: notification.read ? '3px solid transparent' : '3px solid #2D5D7B',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => !notification.read && notification.notification_id && markNotificationAsRead(notification.notification_id)}
                           >
-                            <div className="notification-content">
-                              <h4>{notification.title}</h4>
-                              <p>{notification.message}</p>
-                              <span className="notification-time">{notification.time}</span>
+                            <div className="notification-content" style={{ flex: 1 }}>
+                              <h4 style={{ 
+                                margin: '0 0 5px 0',
+                                fontWeight: notification.read ? '500' : '600',
+                                color: notification.read ? '#666' : '#222831'
+                              }}>
+                                {notification.title}
+                              </h4>
+                              <p style={{ margin: '0 0 5px 0', color: '#666' }}>
+                                {notification.message}
+                              </p>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                                <span className="notification-time" style={{ fontSize: '0.75rem', color: '#999' }}>
+                                  {notification.time}
+                                </span>
+                                {notification.student_name && (
+                                  <span style={{ fontSize: '0.75rem', color: '#2D5D7B', fontWeight: '500' }}>
+                                    About: {notification.student_name}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            {!notification.read && <div className="unread-dot"></div>}
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: '10px' }}>
+                              {!notification.read && (
+                                <div className="unread-dot" style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#2D5D7B'
+                                }}></div>
+                              )}
+                              {notification.notification_id && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const deleteConfirmMsg = 'Are you sure you want to delete this notification?';
+                                    if (window.confirm(deleteConfirmMsg)) {
+                                      handleDeleteNotification(notification.notification_id, e);
+                                    }
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    color: '#DC3545',
+                                    fontSize: '1rem'
+                                  }}
+                                  title="Delete"
+                                >
+                                  <FiX />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))
                       ) : (
-                        <p className="no-notifications">{t('common.noNotifications')}</p>
+                        <p className="no-notifications">{t('common.noNotifications') || 'No notifications yet'}</p>
                       )}
                     </div>
                   </div>

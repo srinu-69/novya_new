@@ -182,16 +182,18 @@ class Notification(models.Model):
 
 class StudentNotification(models.Model):
     """
-    Student Notification model for study plan notifications
+    Student Notification model for study plan notifications and teacher messages
     """
     NOTIFICATION_TYPES = [
         ('study_plan_created', 'Study Plan Created'),
         ('study_plan_updated', 'Study Plan Updated'),
+        ('teacher_message', 'Teacher Message'),
         ('other', 'Other'),
     ]
     
     notification_id = models.AutoField(primary_key=True)
     student_id = models.IntegerField()  # References student_registration(student_id) - FK constraint handled at DB level
+    teacher_id = models.IntegerField(null=True, blank=True)  # References teacher_registration(teacher_id) - who sent the message
     notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='study_plan_created')
     title = models.CharField(max_length=200)
     message = models.TextField()
@@ -208,6 +210,43 @@ class StudentNotification(models.Model):
     
     def __str__(self):
         return f"Student {self.student_id} - {self.title}"
+
+
+class ParentNotification(models.Model):
+    """
+    Parent Notification model for teacher-parent messages
+    Stores notifications sent by teachers to parents about specific students
+    """
+    NOTIFICATION_TYPES = [
+        ('teacher_message', 'Teacher Message'),
+        ('attendance_alert', 'Attendance Alert'),
+        ('performance_update', 'Performance Update'),
+        ('general', 'General'),
+    ]
+    
+    notification_id = models.AutoField(primary_key=True)
+    parent_email = models.CharField(max_length=255, db_index=True)  # Parent's email
+    student_id = models.IntegerField()  # References student_registration(student_id) - which child the message is about
+    teacher_id = models.IntegerField(null=True, blank=True)  # References teacher_registration(teacher_id) - who sent it
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='teacher_message')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'parent_notifications'
+        ordering = ['-created_at']
+        verbose_name = 'Parent Notification'
+        verbose_name_plural = 'Parent Notifications'
+        indexes = [
+            models.Index(fields=['parent_email', 'student_id']),
+            models.Index(fields=['parent_email', 'is_read']),
+        ]
+    
+    def __str__(self):
+        return f"Parent {self.parent_email} - {self.title}"
 
 
 class Announcement(models.Model):

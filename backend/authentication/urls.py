@@ -37,6 +37,19 @@ urlpatterns = [
     path('create-student-profile/', views.create_student_profile, name='create_student_profile'),
     path('child-profile/', views.get_child_profile_for_parent, name='get_child_profile_for_parent'),
     path('parent-profile/', views.get_parent_profile_with_child_address, name='get_parent_profile_with_child_address'),
+    path('teacher-profile/', views.get_teacher_profile, name='get_teacher_profile'),
+    path('teacher-profile/update/', views.update_teacher_profile, name='update_teacher_profile'),
+    path('teacher-students/', views.get_teacher_students, name='get_teacher_students'),
+    path('teacher-parents/', views.get_teacher_parents, name='get_teacher_parents'),
+    
+    # Parent notification endpoints
+    path('send-parent-message/', views.send_parent_message, name='send_parent_message'),
+    path('parent-notifications/', views.get_parent_notifications, name='get_parent_notifications'),
+    path('parent-notification/<int:notification_id>/read/', views.mark_parent_notification_read, name='mark_parent_notification_read'),
+    path('parent-notification/<int:notification_id>/delete/', views.delete_parent_notification, name='delete_parent_notification'),
+    
+    # Student notification endpoints
+    path('send-student-message/', views.send_student_message, name='send_student_message'),
     
     # Coin/Rewards endpoints
     path('coins/add/', views.add_coin_transaction, name='add_coin_transaction'),

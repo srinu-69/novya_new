@@ -1108,40 +1108,20 @@ const LoginPage = () => {
     // Clear any existing authentication data first
     clearAuthData();
 
-    // Skip API for teacher (as per user's request to leave teacher module)
-    if (activeTab === 'teacher') {
-      // Dummy teacher login (no backend connection for now)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const validTeacherCredentials = { username: 'teacher789', password: 'teacherpass' };
-      
-      if (current.username === validTeacherCredentials.username && current.password === validTeacherCredentials.password) {
-        sessionStorage.setItem('justLoggedIn', 'true');
-        localStorage.setItem('userRole', 'teacher');
-        localStorage.setItem('userToken', 'dummy-teacher-token');
-        setToastMsg('Teacher login successful!');
-        setShowToast(true);
-        setIsLoading(false);
-        
-        setTimeout(() => {
-          navigate('/teacher/dashboard');
-        }, 1000);
-      } else {
-        setErrors(prev => ({
-          ...prev,
-          [activeTab]: { ...prev[activeTab], username: '', password: 'Invalid username or password' }
-        }));
-        setIsLoading(false);
-      }
-      return;
-    }
+    // REAL API CALLS for Student, Parent, and Teacher
+    // Teacher login now uses real API instead of static credentials
 
-    // REAL API CALLS for Student and Parent
+    // REAL API CALLS for Student, Parent, and Teacher
     try {
       // Call Django backend login API (no auth needed for login)
-      const response = await djangoAPI.postNoAuth(API_CONFIG.DJANGO.AUTH.LOGIN, {
+      // Send role to backend for validation
+      const loginPayload = {
         username: current.username,
-        password: current.password
-      });
+        password: current.password,
+        role: activeTab  // Send the role (student/parent/teacher) for validation
+      };
+      console.log(`🔍 Sending login request with role: ${activeTab}`, loginPayload);
+      const response = await djangoAPI.postNoAuth(API_CONFIG.DJANGO.AUTH.LOGIN, loginPayload);
 
       // Store authentication data
       const token = response.access || response.token;
@@ -1282,7 +1262,7 @@ const LoginPage = () => {
       }
 
       if (!rewardAwarded) {
-        const roleName = activeTab === 'student' ? 'Student' : 'Parent';
+        const roleName = activeTab === 'student' ? 'Student' : activeTab === 'parent' ? 'Parent' : 'Teacher';
         setToastMsg(`${roleName} login successful!`);
       }
 
@@ -1292,7 +1272,8 @@ const LoginPage = () => {
       // Wait for animation to complete before navigation
       const dashboardRoutes = {
         student: '/student/dashboard',
-        parent: '/parent/dashboard'
+        parent: '/parent/dashboard',
+        teacher: '/teacher/dashboard'
       };
 
       setTimeout(() => {
@@ -1301,21 +1282,44 @@ const LoginPage = () => {
       
     } catch (error) {
       console.error('Login error:', error);
+      // Try to parse JSON error response to get the detail message
+      let errorMessage = 'Invalid username or password. Please try again.';
+      try {
+        const errorText = error.message || '';
+        // Check if error message contains JSON (from backend error response)
+        if (errorText.includes('{') && errorText.includes('detail')) {
+          // Try to extract JSON from error message
+          // Error format: "HTTP error! status: 403 - {"detail": "message"}"
+          const jsonMatch = errorText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const errorObj = JSON.parse(jsonMatch[0]);
+            if (errorObj.detail) {
+              errorMessage = errorObj.detail;
+            }
+          }
+        } else if (errorText && !errorText.includes('HTTP error!')) {
+          // Use the error message as is if it's not an HTTP error format
+          errorMessage = errorText;
+        }
+      } catch (parseError) {
+        // If parsing fails, use default message
+        console.error('Error parsing error message:', parseError);
+      }
       setErrors(prev => ({
         ...prev,
         [activeTab]: {
           ...prev[activeTab],
           username: '',
-          password: error.message || 'Invalid username or password. Please try again.'
+          password: errorMessage
         },
       }));
       setIsLoading(false);
     }
   };
 
-  // Navigate to register page
+  // Navigate to register page with current role
   const handleRegisterClick = () => {
-    navigate('/signup');
+    navigate(`/signup?role=${activeTab}`);
   };
 
   // Forgot password

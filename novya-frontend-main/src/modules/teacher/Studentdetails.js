@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { API_CONFIG, djangoAPI } from '../../config/api';
 
 const StudentDetails = () => {
   const navigate = useNavigate();
@@ -8,19 +9,59 @@ const StudentDetails = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [message, setMessage] = useState('');
   const [chatHistories, setChatHistories] = useState({});
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
 
-  const students = [
-    { id: 1, name: 'John Doe', email: 'john@example.com', status: 'active', grade: 'A', attendance: '95%', lastActive: `2 ${t('hoursAgo')}` },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com', status: 'active', grade: 'A+', attendance: '98%', lastActive: `1 ${t('hourAgo')}` },
-    { id: 3, name: 'Mike Johnson', email: 'mike@example.com', status: 'inactive', grade: 'C', attendance: '75%', lastActive: `5 ${t('daysAgo')}` },
-    { id: 4, name: 'Sarah Wilson', email: 'sarah@example.com', status: 'active', grade: 'B+', attendance: '92%', lastActive: `30 ${t('minutesAgo')}` },
-    { id: 5, name: 'Tom Brown', email: 'tom@example.com', status: 'active', grade: 'A-', attendance: '96%', lastActive: `3 ${t('hoursAgo')}` },
-    { id: 6, name: 'Emma Davis', email: 'emma@example.com', status: 'inactive', grade: 'B', attendance: '88%', lastActive: `1 ${t('weekAgo')}` },
-    { id: 7, name: 'Alex Miller', email: 'alex@example.com', status: 'active', grade: 'A', attendance: '97%', lastActive: `15 ${t('minutesAgo')}` },
-    { id: 8, name: 'Lisa Garcia', email: 'lisa@example.com', status: 'active', grade: 'A+', attendance: '99%', lastActive: `45 ${t('minutesAgo')}` },
-    { id: 9, name: 'Kevin Martinez', email: 'kevin@example.com', status: 'inactive', grade: 'C+', attendance: '82%', lastActive: `2 ${t('weeksAgo')}` },
-    { id: 10, name: 'Amy Robinson', email: 'amy@example.com', status: 'active', grade: 'B+', attendance: '94%', lastActive: `1 ${t('hourAgo')}` }
-  ];
+  // Fetch students data from API
+  useEffect(() => {
+    fetchTeacherStudents();
+  }, []);
+
+  const fetchTeacherStudents = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_STUDENTS);
+      
+      if (response && response.students) {
+        // Transform API data to match component format
+        const transformedStudents = response.students.map((student, index) => {
+          const userInfo = student.user_info || {};
+          const profile = student.profile || {};
+          
+          // Calculate attendance (default to 95% if not available)
+          const attendance = profile.attendance || '95%';
+          
+          // Determine grade based on performance or use default
+          const grade = profile.grade || 'A';
+          
+          return {
+            id: student.student_id || index + 1,
+            name: `${userInfo.firstname || student.first_name || ''} ${userInfo.lastname || student.last_name || ''}`.trim() || 'Unknown Student',
+            email: userInfo.email || student.student_email || '',
+            status: 'active', // Default status
+            grade: grade,
+            attendance: attendance,
+            lastActive: `2 ${t('hoursAgo')}`, // Default last active
+            school: profile.school || '',
+            phone: userInfo.phone || student.phone_number || ''
+          };
+        });
+        
+        setStudents(transformedStudents);
+      } else {
+        setStudents([]);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching teacher students:', err);
+      setError(err.message || 'Failed to fetch students');
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleBack = () => {
     navigate('/teacher/userlist');
@@ -39,8 +80,24 @@ const StudentDetails = () => {
     }
   };
 
-  const handleSendMessage = () => {
-    if (message.trim() && selectedStudent) {
+  const handleSendMessage = async () => {
+    if (!message.trim() || !selectedStudent) {
+      return;
+    }
+    
+    try {
+      setSendingMessage(true);
+      
+      // Send message to student via API
+      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.SEND_STUDENT_MESSAGE, {
+        student_id: selectedStudent.id,
+        message: message,
+        title: `Message about ${selectedStudent.name}`
+      });
+      
+      console.log('✅ Message sent successfully:', response);
+      
+      // Update local chat history
       const studentId = selectedStudent.id;
       const currentChat = chatHistories[studentId] || [];
       
@@ -51,29 +108,23 @@ const StudentDetails = () => {
         timestamp: new Date().toLocaleTimeString()
       };
 
-      // Update chat history for the specific student
       const updatedChat = [...currentChat, newMessage];
       setChatHistories(prev => ({
         ...prev,
         [studentId]: updatedChat
       }));
       
+      // Clear message field
       setMessage('');
       
-      // Simulate student response after 2 seconds
-      setTimeout(() => {
-        const studentResponse = {
-          id: Date.now() + 1,
-          text: generateStudentResponse(selectedStudent),
-          sender: 'student',
-          timestamp: new Date().toLocaleTimeString()
-        };
-        
-        setChatHistories(prev => ({
-          ...prev,
-          [studentId]: [...prev[studentId], studentResponse]
-        }));
-      }, 2000);
+      // Show success message
+      alert('Message sent to student successfully!');
+      
+    } catch (err) {
+      console.error('❌ Error sending message:', err);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -369,19 +420,60 @@ const StudentDetails = () => {
         <div style={layoutStyle}>
           <div style={tableContainerStyle}>
             <div style={tableWrapperStyle}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>{t('serialNo')}</th>
-                    <th style={thStyle}>{t('name')}</th>
-                    <th style={thStyle}>{t('email')}</th>
-                    <th style={thStyle}>{t('grade')}</th>
-                    <th style={thStyle}>{t('attendance')}</th>
-                    <th style={thStyle}>{t('status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student, index) => (
+              {loading && (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#222831' }}>
+                  {t('loading') || 'Loading students...'}
+                </div>
+              )}
+              
+              {error && (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '20px', 
+                  backgroundColor: '#fee2e2',
+                  color: '#991b1b',
+                  borderRadius: '8px',
+                  margin: '20px'
+                }}>
+                  {t('error') || 'Error'}: {error}
+                  <button 
+                    onClick={fetchTeacherStudents}
+                    style={{
+                      marginLeft: '10px',
+                      padding: '8px 16px',
+                      backgroundColor: '#2D5D7B',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('retry') || 'Retry'}
+                  </button>
+                </div>
+              )}
+              
+              {!loading && !error && (
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>{t('serialNo')}</th>
+                      <th style={thStyle}>{t('name')}</th>
+                      <th style={thStyle}>{t('email')}</th>
+                      <th style={thStyle}>{t('grade')}</th>
+                      <th style={thStyle}>{t('attendance')}</th>
+                      <th style={thStyle}>{t('status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                          {t('noStudentsFound') || 'No students found. Please ensure your school name is set in your profile and students have matching school names.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      students.map((student, index) => (
                     <tr 
                       key={student.id}
                       style={{ 
@@ -420,10 +512,12 @@ const StudentDetails = () => {
                           {t(student.status)}
                         </span>
                       </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 

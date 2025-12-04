@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError
 from .models import (
     User, Student, Parent, PasswordResetToken, 
-    ParentRegistration, StudentRegistration, ParentStudentMapping, StudentProfile,
+    ParentRegistration, StudentRegistration, TeacherRegistration, ParentStudentMapping, StudentProfile, TeacherProfile,
     CoinTransaction, UserCoinBalance, StudentFeedback,
     UserBadge, UserStreak, DailyActivity, LeaderboardEntry
 )
@@ -492,6 +492,31 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             return "Unknown Student"
 
 
+class TeacherProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Teacher Profile
+    """
+    teacher_name_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TeacherProfile
+        fields = [
+            'profile_id', 'teacher_id', 'teacher_username', 'teacher_name', 
+            'email', 'phone_number', 'school', 'department', 
+            'created_at', 'updated_at', 'teacher_name_display'
+        ]
+        read_only_fields = ['profile_id', 'created_at', 'updated_at']
+    
+    def get_teacher_name_display(self, obj):
+        if obj.teacher_name:
+            return obj.teacher_name
+        try:
+            teacher = TeacherRegistration.objects.get(teacher_id=obj.teacher_id)
+            return f"{teacher.first_name} {teacher.last_name}"
+        except TeacherRegistration.DoesNotExist:
+            return "Unknown Teacher"
+
+
 class ParentRegistrationCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating parent registration
@@ -519,6 +544,35 @@ class ParentRegistrationCreateSerializer(serializers.ModelSerializer):
         from django.contrib.auth.hashers import make_password
         validated_data['parent_password'] = make_password(validated_data['parent_password'])
         return ParentRegistration.objects.create(**validated_data)
+
+
+class TeacherRegistrationCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating teacher registration
+    """
+    confirm_password = serializers.CharField(write_only=True)
+    
+    class Meta:
+        model = TeacherRegistration
+        fields = [
+            'email', 'first_name', 'last_name', 'phone_number',
+            'teacher_username', 'teacher_password', 'confirm_password'
+        ]
+        extra_kwargs = {
+            'teacher_password': {'write_only': True}
+        }
+    
+    def validate(self, attrs):
+        if attrs['teacher_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError("Passwords don't match")
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data.pop('confirm_password')
+        # Hash the password
+        from django.contrib.auth.hashers import make_password
+        validated_data['teacher_password'] = make_password(validated_data['teacher_password'])
+        return TeacherRegistration.objects.create(**validated_data)
 
 
 class StudentRegistrationCreateSerializer(serializers.ModelSerializer):

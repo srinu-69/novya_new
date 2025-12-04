@@ -29,6 +29,18 @@ CREATE TABLE student_registration (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Teacher Registration
+CREATE TABLE teacher_registration (
+    teacher_id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(15) UNIQUE NOT NULL,
+    teacher_username VARCHAR(255) UNIQUE NOT NULL,
+    teacher_password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Parent-Student Mapping
 CREATE TABLE parent_student_mapping (
     mapping_id SERIAL PRIMARY KEY,
@@ -70,6 +82,21 @@ CREATE TABLE student_profile (
     course_id INTEGER,
     address TEXT,
     FOREIGN KEY (student_id) REFERENCES student_registration(student_id)
+);
+
+-- Teacher Profile
+CREATE TABLE teacher_profile (
+    profile_id SERIAL PRIMARY KEY,
+    teacher_id INTEGER UNIQUE NOT NULL,
+    teacher_username VARCHAR(255) UNIQUE,
+    teacher_name VARCHAR(200),
+    email VARCHAR(255),
+    phone_number VARCHAR(15),
+    school VARCHAR(150),
+    department VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES teacher_registration(teacher_id)
 );
 
 -- Password Reset Tokens
@@ -606,15 +633,32 @@ CREATE TABLE leaderboard_entry (
 -- NOTIFICATIONS MODULE
 -- =====================================================
 
--- Student Notifications (Study Plan Notifications)
--- Stores notifications related to study plans created for students
+-- Student Notifications (Study Plan Notifications and Teacher Messages)
+-- Stores notifications related to study plans created for students and messages from teachers
 CREATE TABLE student_notifications (
     notification_id SERIAL PRIMARY KEY,
     student_id INTEGER NOT NULL,
+    teacher_id INTEGER, -- References teacher_registration(teacher_id) - who sent the message
     notification_type VARCHAR(50) NOT NULL DEFAULT 'study_plan_created',
     title VARCHAR(200) NOT NULL,
     message TEXT NOT NULL,
     plan_id VARCHAR(200), -- Reference to study plan ID (e.g., "plan_7_Math_Chapter1_...")
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id) ON DELETE CASCADE
+);
+
+-- Parent Notifications (Teacher-Parent Messages)
+-- Stores notifications sent by teachers to parents about specific students
+CREATE TABLE parent_notifications (
+    notification_id SERIAL PRIMARY KEY,
+    parent_email VARCHAR(255) NOT NULL,
+    student_id INTEGER NOT NULL,
+    teacher_id INTEGER,
+    notification_type VARCHAR(50) NOT NULL DEFAULT 'teacher_message',
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
     read_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -847,6 +891,10 @@ CREATE INDEX idx_calendar_student_date ON calendar(student_id, entry_date);
 -- Authentication Indexes
 CREATE INDEX idx_student_registration_parent_email ON student_registration(parent_email);
 CREATE INDEX idx_parent_student_mapping_parent ON parent_student_mapping(parent_email);
+CREATE INDEX idx_teacher_registration_email ON teacher_registration(email);
+CREATE INDEX idx_teacher_registration_username ON teacher_registration(teacher_username);
+CREATE INDEX idx_teacher_profile_teacher_id ON teacher_profile(teacher_id);
+CREATE INDEX idx_teacher_profile_username ON teacher_profile(teacher_username);
 
 -- Quiz Indexes
 CREATE INDEX idx_quiz_attempt_student ON quiz_attempt(student_id);
@@ -883,6 +931,11 @@ CREATE INDEX idx_leaderboard_entry_period ON leaderboard_entry(period_start, per
 CREATE INDEX idx_student_notifications_student ON student_notifications(student_id);
 CREATE INDEX idx_student_notifications_date ON student_notifications(created_at);
 CREATE INDEX idx_student_notifications_read ON student_notifications(is_read);
+
+-- Parent Notifications Indexes
+CREATE INDEX idx_parent_notifications_parent_student ON parent_notifications(parent_email, student_id);
+CREATE INDEX idx_parent_notifications_parent_read ON parent_notifications(parent_email, is_read);
+CREATE INDEX idx_parent_notifications_date ON parent_notifications(created_at);
 
 -- Course Indexes
 CREATE INDEX idx_pdffiles_course_topic ON pdffiles(course_id, topic_id);
@@ -951,6 +1004,7 @@ COMMENT ON TABLE leaderboard_entry IS 'Stores calculated leaderboard rankings';
 COMMENT ON TABLE user_coin_balance IS 'Stores current coin balance for each user (optimized for quick access)';
 COMMENT ON TABLE student_feedback IS 'Stores feedback from students with rating and comments';
 COMMENT ON TABLE student_notifications IS 'Stores study plan notifications for students';
+COMMENT ON TABLE parent_notifications IS 'Stores notifications sent by teachers to parents about specific students';
 
 -- =====================================================
 -- SCHEMA COMPLETE

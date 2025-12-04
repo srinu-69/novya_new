@@ -5459,6 +5459,34 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     {t('leadership', 'Leadership')}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAvatarOpen(false);
+                      navigate('/attendance');
+                    }}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px',
+                      color: '#1F2937',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => { e.target.style.background = '#f0f0f0'; }}
+                    onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
+                  >
+                    <FaClock size={14} />
+                    Attendance
+                  </button>
+
                   <div style={{ borderTop: '1px solid #f0f0f0', margin: '4px 0' }}></div>
 
                   <button

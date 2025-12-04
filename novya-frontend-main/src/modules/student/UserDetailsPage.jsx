@@ -55,9 +55,12 @@ const UserDetailsPage = () => {
       try {
         // Try to fetch fresh data from backend first
         if (userToken) {
+          console.log('🔍 Fetching user profile from:', API_CONFIG.DJANGO.AUTH.USER_PROFILE);
           const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.USER_PROFILE);
+          console.log('✅ Backend response:', response);
           
           if (response && response.user) {
+            console.log('✅ Response has user data:', response.user);
             // Get existing localStorage data to preserve good values
             let existingData = {};
             if (userRole === "student") {
@@ -82,22 +85,27 @@ const UserDetailsPage = () => {
             
             const backendData = {
               // Use backend data if available, otherwise keep existing data
-              firstName: response.user.firstname || existingData.firstName || 'User',
-              lastName: response.user.lastname || existingData.lastName || 'Name',
-              email: response.user.email || existingData.email || 'user@example.com',
-              userName: response.user.username || existingData.userName || 'username',
-              phone: response.user.phonenumber || existingData.phone || '',
+              // Prioritize data from backend response
+              firstName: response.user?.firstname || existingData.firstName || 'User',
+              lastName: response.user?.lastname || existingData.lastName || 'Name',
+              email: response.user?.email || existingData.email || 'user@example.com',
+              userName: response.user?.username || existingData.userName || 'username',
+              phone: response.user?.phonenumber || existingData.phone || '',
               role: userRole || existingData.role || 'student',
               address: response.student_profile?.address || existingData.address || '',
               ...(userRole === 'student' && {
                 grade: response.student_profile?.grade || existingData.grade || '',
-                course: response.student_profile?.course || existingData.course || '',
-                // Use parent details from backend response or keep existing
+                school: response.student_profile?.school || existingData.school || '',
+                // Use parent details from backend response - these should auto-populate from parent_email
                 parentEmail: response.parent_details?.parent_email || existingData.parentEmail || '',
                 parentName: response.parent_details?.parent_name || existingData.parentName || '',
                 parentPhone: response.parent_details?.parent_phone || existingData.parentPhone || ''
               })
             };
+            
+            console.log('📦 Prepared backendData:', backendData);
+            console.log('📞 Phone from backend:', backendData.phone);
+            console.log('👨‍👩‍👧 Parent details:', backendData.parentName, backendData.parentEmail, backendData.parentPhone);
             
             setUserData(backendData);
             
@@ -106,16 +114,23 @@ const UserDetailsPage = () => {
               if (userRole === "student") {
                 localStorage.setItem("studentData", JSON.stringify(backendData));
                 localStorage.setItem("studentDataLastFetch", now.toString());
+                console.log('💾 Saved student data to localStorage');
               } else {
                 localStorage.setItem("parentData", JSON.stringify(backendData));
                 localStorage.setItem("parentDataLastFetch", now.toString());
+                console.log('💾 Saved parent data to localStorage');
               }
             }
             return;
+          } else {
+            console.warn('⚠️ Response received but no user data found:', response);
           }
+        } else {
+          console.warn('⚠️ No user token found, skipping backend fetch');
         }
       } catch (error) {
         console.error('❌ Error fetching from backend:', error);
+        console.error('❌ Error details:', error.response?.data || error.message);
         // Fall through to localStorage fallback
       }
       
@@ -166,7 +181,7 @@ const UserDetailsPage = () => {
         address: updatedData.address || '',
         ...(updatedData.role === 'student' && {
           grade: updatedData.grade || '',
-          course: updatedData.course || ''
+          school: updatedData.school || ''
         })
       };
 
@@ -304,7 +319,7 @@ const UserDetailsPage = () => {
               ...(userData.role === "student"
                 ? [
                     { label: t('userDetails.grade', 'Grade'), name: "grade" },
-                    { label: t('userDetails.course', 'Course'), name: "course" },
+                    { label: t('userDetails.school', 'School'), name: "school" },
                   ]
                 : []),
               { label: t('userDetails.address', 'Address'), name: "address" },

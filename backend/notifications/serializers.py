@@ -60,13 +60,26 @@ class StudentNotificationSerializer(serializers.ModelSerializer):
     """
     Serializer for StudentNotification model
     """
+    teacher_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = StudentNotification
         fields = [
-            'notification_id', 'student_id', 'notification_type', 'title',
-            'message', 'plan_id', 'is_read', 'read_at', 'created_at'
+            'notification_id', 'student_id', 'teacher_id', 'notification_type', 'title',
+            'message', 'plan_id', 'is_read', 'read_at', 'created_at', 'teacher_name'
         ]
         read_only_fields = ['notification_id', 'created_at']
+    
+    def get_teacher_name(self, obj):
+        """Get teacher name if notification is from a teacher"""
+        if obj.teacher_id:
+            try:
+                from authentication.models import TeacherRegistration
+                teacher = TeacherRegistration.objects.get(teacher_id=obj.teacher_id)
+                return f"{teacher.first_name} {teacher.last_name}".strip()
+            except TeacherRegistration.DoesNotExist:
+                return None
+        return None
     
     def validate(self, data):
         """Validate notification data"""

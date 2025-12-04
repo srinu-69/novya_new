@@ -733,6 +733,7 @@ import TypingMaster from './modules/student/TypingMaster/TypingMaster';
 import LearningReports from './modules/student/DailySummary';
 import LeadershipBoard from './modules/student/LeadershipBoard';
 import Badges from './modules/student/Badges';
+import StudentAttendance from './modules/student/StudentAttendance';
 import { ScreenTimeProvider } from './modules/student/ScreenTime';
 
 // Practice & Mock Test Modules
@@ -813,6 +814,7 @@ function App() {
     '/typing-master',
     '/daily-summary',
     '/leadership',
+    '/attendance',
     '/badges',
     '/screentime'
   ].some(path => location.pathname.startsWith(path));
@@ -913,6 +915,14 @@ function App() {
             <ProtectedRoute>
               <RoleRoute requiredRole="student">
                 <LeadershipBoard />
+              </RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/attendance" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="student">
+                <StudentAttendance />
               </RoleRoute>
             </ProtectedRoute>
           } />

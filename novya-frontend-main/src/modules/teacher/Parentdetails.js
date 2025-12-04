@@ -1,26 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { API_CONFIG, djangoAPI } from '../../config/api';
 
 const ParentDetails = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [selectedParent, setSelectedParent] = useState(null);
+  const [selectedChild, setSelectedChild] = useState(null);
   const [message, setMessage] = useState('');
   const [chatHistories, setChatHistories] = useState({});
+  const [parents, setParents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
 
-  const parents = [
-    { id: 1, name: 'Robert Doe', childName: 'John Doe', performance: 'Excellent', email: 'robert.doe@example.com', phone: '+1-555-0101', lastContact: '2 days ago', childGrade: 'A', attendance: '95%' },
-    { id: 2, name: 'Michael Smith', childName: 'Jane Smith', performance: 'Good', email: 'michael.smith@example.com', phone: '+1-555-0102', lastContact: '1 week ago', childGrade: 'A+', attendance: '92%' },
-    { id: 3, name: 'David Johnson', childName: 'Mike Johnson', performance: 'Average', email: 'david.johnson@example.com', phone: '+1-555-0103', lastContact: '3 weeks ago', childGrade: 'C', attendance: '85%' },
-    { id: 4, name: 'James Wilson', childName: 'Sarah Wilson', performance: 'Excellent', email: 'james.wilson@example.com', phone: '+1-555-0104', lastContact: '5 days ago', childGrade: 'B+', attendance: '98%' },
-    { id: 5, name: 'Richard Brown', childName: 'Tom Brown', performance: 'Good', email: 'richard.brown@example.com', phone: '+1-555-0105', lastContact: '2 weeks ago', childGrade: 'A-', attendance: '90%' },
-    { id: 6, name: 'Charles Davis', childName: 'Emma Davis', performance: 'Good', email: 'charles.davis@example.com', phone: '+1-555-0106', lastContact: '1 month ago', childGrade: 'B', attendance: '78%' },
-    { id: 7, name: 'Thomas Miller', childName: 'Alex Miller', performance: 'Excellent', email: 'thomas.miller@example.com', phone: '+1-555-0107', lastContact: '3 days ago', childGrade: 'A', attendance: '96%' },
-    { id: 8, name: 'Christopher Garcia', childName: 'Lisa Garcia', performance: 'Good', email: 'christopher.garcia@example.com', phone: '+1-555-0108', lastContact: '1 week ago', childGrade: 'A+', attendance: '91%' },
-    { id: 9, name: 'Daniel Martinez', childName: 'Kevin Martinez', performance: 'Average', email: 'daniel.martinez@example.com', phone: '+1-555-0109', lastContact: '2 weeks ago', childGrade: 'C+', attendance: '87%' },
-    { id: 10, name: 'Paul Robinson', childName: 'Amy Robinson', performance: 'Excellent', email: 'paul.robinson@example.com', phone: '+1-555-0110', lastContact: '4 days ago', childGrade: 'B+', attendance: '94%' }
-  ];
+  // Fetch parents data from API
+  useEffect(() => {
+    fetchTeacherParents();
+  }, []);
+
+  const fetchTeacherParents = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_PARENTS);
+      
+      if (response && response.parents) {
+        // Transform API data to match component format
+        const transformedParents = response.parents.map((parent, index) => {
+          // Get child name from student info if available
+          const childName = parent.child_name || 'N/A';
+          
+          // Determine performance based on child performance or default
+          const childPerformance = parent.child_performance || 'average';
+          
+          // Map performance values to display format
+          let performance = 'Average';
+          if (childPerformance === 'excellent' || childPerformance === 'Excellent') {
+            performance = 'Excellent';
+          } else if (childPerformance === 'good' || childPerformance === 'Good') {
+            performance = 'Good';
+          } else if (childPerformance === 'average' || childPerformance === 'Average') {
+            performance = 'Average';
+          } else {
+            performance = 'Needs Improvement';
+          }
+          
+          return {
+            id: parent.parent_id || index + 1,
+            name: parent.parent_name || 'Unknown Parent',
+            childName: childName,
+            performance: performance,
+            email: parent.parent_email || '',
+            phone: parent.parent_phone || '',
+            lastContact: '1 day ago', // Default last contact
+            childGrade: parent.child_grade || 'A', // Default grade
+            attendance: parent.child_attendance || '95%', // Default attendance
+            unreadMessages: parent.unread_messages || 0,
+            linked_students: parent.linked_students || [] // Store all children
+          };
+        });
+        
+        setParents(transformedParents);
+      } else {
+        setParents([]);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching teacher parents:', err);
+      setError(err.message || 'Failed to fetch parents');
+      setParents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleBack = () => {
     navigate('/teacher/userlist');
@@ -28,6 +81,7 @@ const ParentDetails = () => {
 
   const handleParentSelect = (parent) => {
     setSelectedParent(parent);
+    setSelectedChild(null); // Reset child selection
     setMessage('');
     
     // Initialize chat history if it doesn't exist
@@ -37,43 +91,42 @@ const ParentDetails = () => {
         [parent.id]: []
       }));
     }
+    
+    // Auto-select first child if available
+    if (parent.linked_students && parent.linked_students.length > 0) {
+      setSelectedChild(parent.linked_students[0]);
+    }
   };
 
-  const handleSendMessage = () => {
-    if (message.trim() && selectedParent) {
-      const parentId = selectedParent.id;
-      const currentChat = chatHistories[parentId] || [];
+  const handleSendMessage = async () => {
+    if (!message.trim() || !selectedParent || !selectedChild) {
+      return;
+    }
+    
+    try {
+      setSendingMessage(true);
       
-      const newMessage = {
-        id: Date.now(),
-        text: message,
-        sender: 'teacher',
-        timestamp: new Date().toLocaleTimeString()
-      };
-
-      // Update chat history for the specific parent
-      const updatedChat = [...currentChat, newMessage];
-      setChatHistories(prev => ({
-        ...prev,
-        [parentId]: updatedChat
-      }));
+      // Send message to parent via API
+      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.SEND_PARENT_MESSAGE, {
+        parent_email: selectedParent.email,
+        student_id: selectedChild.student_id,
+        message: message,
+        title: `Message about ${selectedChild.student_name}`
+      });
       
+      console.log('✅ Message sent successfully:', response);
+      
+      // Clear message field
       setMessage('');
       
-      // Simulate parent response after 3 seconds
-      setTimeout(() => {
-        const parentResponse = {
-          id: Date.now() + 1,
-          text: generateParentResponse(selectedParent),
-          sender: 'parent',
-          timestamp: new Date().toLocaleTimeString()
-        };
-        
-        setChatHistories(prev => ({
-          ...prev,
-          [parentId]: [...prev[parentId], parentResponse]
-        }));
-      }, 3000);
+      // Show success message (you can add a toast/alert here)
+      alert('Message sent to parent successfully!');
+      
+    } catch (err) {
+      console.error('❌ Error sending message:', err);
+      alert('Failed to send message. Please try again.');
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -431,19 +484,60 @@ const ParentDetails = () => {
 
       <div style={layoutStyle}>
         <div style={tableContainerStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>{t('Serial No')}</th>
-                <th style={thStyle}>{t('Parent Name')}</th>
-                <th style={thStyle}>{t('Child Name')}</th>
-                <th style={thStyle}>{t('Child Grade')}</th>
-                <th style={thStyle}>{t('Attendance')}</th>
-                <th style={thStyle}>{t('Performance')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parents.map((parent, index) => (
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#222831' }}>
+              {t('loading') || 'Loading parents...'}
+            </div>
+          )}
+          
+          {error && (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '20px', 
+              backgroundColor: '#fee2e2',
+              color: '#991b1b',
+              borderRadius: '8px',
+              margin: '20px'
+            }}>
+              {t('error') || 'Error'}: {error}
+              <button 
+                onClick={fetchTeacherParents}
+                style={{
+                  marginLeft: '10px',
+                  padding: '8px 16px',
+                  backgroundColor: '#2D5D7B',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                {t('retry') || 'Retry'}
+              </button>
+            </div>
+          )}
+          
+          {!loading && !error && (
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>{t('Serial No')}</th>
+                  <th style={thStyle}>{t('Parent Name')}</th>
+                  <th style={thStyle}>{t('Child Name')}</th>
+                  <th style={thStyle}>{t('Child Grade')}</th>
+                  <th style={thStyle}>{t('Attendance')}</th>
+                  <th style={thStyle}>{t('Performance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                      {t('noParentsFound') || 'No parents found. Parents will appear here when students from your school are linked to parent accounts.'}
+                    </td>
+                  </tr>
+                ) : (
+                  parents.map((parent, index) => (
                 <tr 
                   key={parent.id}
                   style={{ 
@@ -481,19 +575,18 @@ const ParentDetails = () => {
                       {t(parent.performance)}
                     </span>
                   </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div style={chatContainerStyle}>
           <h3 style={chatTitleStyle}>
             {selectedParent ? `${t('Message')} ${selectedParent.name}` : t('Select a Parent')}
           </h3>
-          <p style={chatSubtitleStyle}>
-            {selectedParent && `${t('Regarding')} ${selectedParent.childName}'s ${t('performance')} (${t(selectedParent.performance)})`}
-          </p>
           
           {selectedParent && (
             <div style={parentInfoStyle}>
@@ -532,6 +625,50 @@ const ParentDetails = () => {
             </div>
           )}
           
+          {/* Child Selector */}
+          {selectedParent && selectedParent.linked_students && selectedParent.linked_students.length > 0 && (
+            <div style={{
+              marginBottom: '15px',
+              padding: '12px',
+              backgroundColor: '#F8F9FA',
+              borderRadius: '8px',
+              border: '1px solid rgba(0, 0, 0, 0.1)'
+            }}>
+              <label style={{
+                display: 'block',
+                marginBottom: '8px',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                color: '#333'
+              }}>
+                {t('Select Child') || 'Select Child to Message About'}:
+              </label>
+              <select
+                value={selectedChild ? selectedChild.student_id : ''}
+                onChange={(e) => {
+                  const childId = parseInt(e.target.value);
+                  const child = selectedParent.linked_students.find(s => s.student_id === childId);
+                  setSelectedChild(child || null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid rgba(0, 0, 0, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.9rem',
+                  backgroundColor: '#FFFFFF',
+                  cursor: 'pointer'
+                }}
+              >
+                {selectedParent.linked_students.map((child) => (
+                  <option key={child.student_id} value={child.student_id}>
+                    {child.student_name} {child.student_email ? `(${child.student_email})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          
           <div style={chatMessagesStyle}>
             {currentChatMessages.length === 0 ? (
               <div style={{
@@ -542,7 +679,7 @@ const ParentDetails = () => {
                 padding: '10px',
                 lineHeight: '1.4'
               }}>
-                {selectedParent ? `${t('Start a conversation with')} ${selectedParent.name} ${t('about')} ${selectedParent.childName}'s ${selectedParent.performance.toLowerCase()} ${t('performance')}` : t('Select a parent to start chatting')}
+                {selectedParent ? `${t('Start a conversation with')} ${selectedParent.name} ${t('about')} ${selectedParent.childName}` : t('Select a parent to start chatting')}
               </div>
             ) : (
               currentChatMessages.map((msg) => (
@@ -567,16 +704,20 @@ const ParentDetails = () => {
           <div>
             <textarea
               style={messageInputStyle}
-              placeholder={selectedParent ? `${t('Type your message about')} ${selectedParent.childName}'s ${selectedParent.performance.toLowerCase()} ${t('performance')}...` : t('Select a parent to start communication')}
+              placeholder={selectedParent && selectedChild ? `${t('Type your message about')} ${selectedChild.student_name}...` : selectedParent ? t('Select a child first') : t('Select a parent to start communication')}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              disabled={!selectedParent}
+              disabled={!selectedParent || !selectedChild || sendingMessage}
             />
             <button
-              style={sendButtonStyle}
+              style={{
+                ...sendButtonStyle,
+                backgroundColor: (selectedParent && selectedChild && message.trim() && !sendingMessage) ? '#A62D69' : '#B0BEC5',
+                cursor: (selectedParent && selectedChild && message.trim() && !sendingMessage) ? 'pointer' : 'not-allowed'
+              }}
               onClick={handleSendMessage}
-              disabled={!selectedParent || !message.trim()}
+              disabled={!selectedParent || !selectedChild || !message.trim() || sendingMessage}
               onMouseEnter={(e) => {
                 if (selectedParent && message.trim()) {
                   e.target.style.backgroundColor = '#912358';
@@ -588,7 +729,7 @@ const ParentDetails = () => {
                 }
               }}
             >
-              {t('Send Message')}
+              {sendingMessage ? (t('Sending...') || 'Sending...') : t('Send Message')}
             </button>
           </div>
         </div>

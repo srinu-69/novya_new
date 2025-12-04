@@ -1,6 +1,6 @@
 
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -8,18 +8,25 @@ import { API_CONFIG, djangoAPI } from "../../config/api";
 
 function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const roleFromUrl = queryParams.get('role') || 'student';
+  
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
     userName: "", // Added userName
     phone: "",
     email: "",
-    role: "student",
+    role: roleFromUrl,
     parentEmail: "", // Added parentEmail
     password: "",
     confirmPassword: "",
   });
-localStorage.setItem("userRole", form.role);
+  
+  useEffect(() => {
+    localStorage.setItem("userRole", form.role);
+  }, [form.role]);
 
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -82,6 +89,8 @@ localStorage.setItem("userRole", form.role);
     } else if (form.role === "student" && !emailRegex.test(form.parentEmail)) {
       newErrors.parentEmail = "Please enter a valid parent's email address";
     }
+    
+    // No parentEmail validation needed for teacher or parent roles
 
     if (!form.password) {
       newErrors.password = "Password is required";
@@ -117,10 +126,11 @@ const handleSubmit = async (e) => {
         role: form.role.charAt(0).toUpperCase() + form.role.slice(1), // Capitalize first letter (Student/Parent)
       };
 
-      // Add parent email for students
+      // Add parent email for students only
       if (form.role === "student") {
         registrationData.parent_email = form.parentEmail;
       }
+      // Teacher and Parent don't need parent_email
 
       // Call Django backend register API (no auth needed for registration)
       const response = await djangoAPI.postNoAuth(API_CONFIG.DJANGO.AUTH.REGISTER, registrationData);
@@ -141,6 +151,8 @@ const handleSubmit = async (e) => {
         localStorage.setItem("studentData", JSON.stringify(userDataToStore));
       } else if (form.role === "parent") {
         localStorage.setItem("parentData", JSON.stringify(userDataToStore));
+      } else if (form.role === "teacher") {
+        localStorage.setItem("teacherData", JSON.stringify(userDataToStore));
       }
 
       // Show success message
@@ -434,9 +446,10 @@ const handleSubmit = async (e) => {
           >
             <option value="student">Student</option>
             <option value="parent">Parent</option>
+            <option value="teacher">Teacher</option>
           </motion.select>
 
-          {/* Parent Email for Students */}
+          {/* Parent Email for Students Only */}
           {form.role === "student" && (
             <>
               <label htmlFor="parentEmail">Parent's Email</label>

@@ -58,6 +58,32 @@ class StudentRegistration(models.Model):
         verbose_name_plural = 'Student Registrations'
 
 
+class TeacherRegistration(models.Model):
+    """
+    Teacher Registration model matching new schema
+    """
+    teacher_id = models.AutoField(primary_key=True)
+    email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    phone_number = models.CharField(
+        max_length=15,
+        unique=True,
+        validators=[RegexValidator(regex=r'^\+?[\d\s\-\(\)]{9,15}$', message="Phone number must be entered in a valid format. Up to 15 digits allowed.")]
+    )
+    teacher_username = models.CharField(max_length=255, unique=True)
+    teacher_password = models.CharField(max_length=255)  # This will be hashed
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} ({self.teacher_username})"
+    
+    class Meta:
+        db_table = 'teacher_registration'
+        verbose_name = 'Teacher Registration'
+        verbose_name_plural = 'Teacher Registrations'
+
+
 class ParentStudentMapping(models.Model):
     """
     Parent-Student Mapping model matching new schema
@@ -128,6 +154,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
         ('Student', 'Student'),
         ('Parent', 'Parent'),
+        ('Teacher', 'Teacher'),
         ('Admin', 'Admin'),
     ]
 
@@ -215,7 +242,7 @@ class StudentProfile(models.Model):
     student_username = models.CharField(max_length=255, unique=True, null=True, blank=True)
     parent_email = models.CharField(max_length=255, null=True, blank=True)
     grade = models.CharField(max_length=50, null=True, blank=True)
-    school = models.CharField(max_length=150, null=True, blank=True)
+    school = models.CharField(max_length=150, null=False, blank=False, default='')
     course_id = models.IntegerField(null=True, blank=True)  # Changed from ForeignKey to IntegerField
     address = models.TextField(null=True, blank=True)
     # Only include fields that actually exist in the database
@@ -227,6 +254,35 @@ class StudentProfile(models.Model):
         db_table = 'student_profile'
         verbose_name = 'Student Profile'
         verbose_name_plural = 'Student Profiles'
+
+
+class TeacherProfile(models.Model):
+    """
+    Teacher Profile model matching actual database schema
+    """
+    profile_id = models.AutoField(primary_key=True)
+    teacher_id = models.IntegerField(unique=True)  # Changed from OneToOneField to IntegerField
+    teacher_username = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    teacher_name = models.CharField(max_length=200, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    phone_number = models.CharField(
+        max_length=15,
+        null=True,
+        blank=True,
+        validators=[RegexValidator(regex=r'^\+?[\d\s\-\(\)]{9,15}$', message="Phone number must be entered in a valid format. Up to 15 digits allowed.")]
+    )
+    school = models.CharField(max_length=150, null=True, blank=True)
+    department = models.CharField(max_length=100, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Profile for Teacher ID: {self.teacher_id}"
+    
+    class Meta:
+        db_table = 'teacher_profile'
+        verbose_name = 'Teacher Profile'
+        verbose_name_plural = 'Teacher Profiles'
 
 
 class PasswordResetToken(models.Model):

@@ -1,0 +1,340 @@
+/* ======================================================
+   CLEANED + FIXED CSS
+   ====================================================== */
+
+/* ---------- MAIN CONTAINER ---------- */
+.student-attendance-container {
+  max-width: 1050px;
+  margin: auto;
+  padding: 20px;
+  font-family: "Poppins", sans-serif;
+  margin-top: 70px;
+}
+
+/* ---------- TITLE ---------- */
+.attendance-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.attendance-subtitle {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-bottom: 20px;
+}
+
+/* ---------- VIEW SWITCHER ---------- */
+.view-selector {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.view-selector button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-weight: 500;
+  transition: 0.2s ease;
+}
+
+.view-selector button.active {
+  background: #4f46e5;
+  color: white;
+}
+
+/* ---------- SUMMARY CARDS ---------- */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.summary-card {
+  padding: 15px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: 0.25s;
+  text-align: center;
+}
+
+.summary-card:hover {
+  transform: translateY(-3px);
+}
+
+.summary-icon {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+
+/* REMOVE ALL UNDERLINES COMPLETELY FROM SUMMARY CARDS */
+.summary-card h2,
+.summary-card p,
+.summary-card *,
+.summary-card *::after,
+.summary-card *::before {
+  text-decoration: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
+/* NUMBER STYLE */
+.summary-card h2 {
+  font-size: 30px;
+  font-weight: bold;
+  margin: 0;
+  padding: 0;
+}
+
+/* LABEL STYLE */
+.summary-card p {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+/* ---------- STATUS LIST ---------- */
+.status-list-box {
+  background: #fff;
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #eee;
+}
+
+.status-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+/* ---------- DATE HEADER ---------- */
+.date-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.selected-date {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.day-text {
+  font-size: 14px;
+  opacity: 0.75;
+}
+
+/* ---------- DATE PICKER ---------- */
+.date-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: white;
+  cursor: pointer;
+}
+
+.calendar-wrapper {
+  position: relative;
+}
+
+/* ---------- CALENDAR DROPDOWN ---------- */
+.calendar-dropdown-container {
+  position: absolute;
+  top: 45px;
+  right: 0;
+  width: 300px;
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.calendar-header button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+}
+
+/* ---------- CALENDAR GRID ---------- */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar-grid-header {
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ---------- CALENDAR DAY ---------- */
+.calendar-day {
+  text-align: center;
+  padding: 7px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+  border: 1px solid #eee;
+}
+
+.calendar-day:hover {
+  background: #e0e7ff;
+}
+
+.selected-day {
+  background: #4f46e5 !important;
+  color: white !important;
+  border-color: #4f46e5 !important;
+}
+
+/* ---------- ATTENDANCE SHEET ---------- */
+.attendance-sheet-box {
+  margin-top: 10px;
+  padding: 18px;
+  border-radius: 10px;
+  background: #fafafa;
+  border: 1px solid #eee;
+}
+
+.sheet-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.attendance-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.sheet-day-header {
+  text-align: center;
+  font-weight: 600;
+  padding: 6px 0;
+  background: #f0f0f0;
+  border-radius: 6px;
+}
+
+.sheet-cell {
+  text-align: center;
+  padding: 7px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  border: 1px solid #eee;
+  transition: 0.2s;
+}
+
+.sheet-cell:hover {
+  transform: scale(1.05);
+}
+
+/* COLORS */
+.present {
+  background: #d1fae5 !important;
+}
+
+.absent {
+  background: #fee2e2 !important;
+}
+
+.late {
+  background: #fef3c7 !important;
+}
+
+/* ---------- WEEKLY ---------- */
+.weekly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.weekly-card {
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #eee;
+  text-align: center;
+  transition: 0.2s;
+}
+
+.weekly-card:hover {
+  transform: translateY(-4px);
+}
+
+.weekly-percent {
+  font-size: 26px;
+  font-weight: bold;
+}
+
+.weekly-bar {
+  height: 6px;
+  background: #eee;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.weekly-progress {
+  height: 100%;
+  background: #4f46e5;
+  border-radius: 4px;
+}
+
+/* ---------- TABLE ---------- */
+.monthly-table-box {
+  margin-top: 15px;
+  overflow-x: auto;
+}
+
+.attendance-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.attendance-table th {
+  background: #f3f4f6;
+}
+
+.attendance-table th,
+.attendance-table td {
+  padding: 10px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* ---------- ANIMATION ---------- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.report-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+

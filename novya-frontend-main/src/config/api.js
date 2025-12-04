@@ -58,6 +58,19 @@ export const API_CONFIG = {
       PROFILE_UPDATE: `${DJANGO_BASE_URL}/auth/profile/update/`,
       CHILD_PROFILE: `${DJANGO_BASE_URL}/auth/child-profile/`,
       PARENT_PROFILE: `${DJANGO_BASE_URL}/auth/parent-profile/`,
+      TEACHER_PROFILE: `${DJANGO_BASE_URL}/auth/teacher-profile/`,
+      TEACHER_PROFILE_UPDATE: `${DJANGO_BASE_URL}/auth/teacher-profile/update/`,
+      TEACHER_STUDENTS: `${DJANGO_BASE_URL}/auth/teacher-students/`,
+      TEACHER_PARENTS: `${DJANGO_BASE_URL}/auth/teacher-parents/`,
+      
+      // Parent notification endpoints
+      SEND_PARENT_MESSAGE: `${DJANGO_BASE_URL}/auth/send-parent-message/`,
+      PARENT_NOTIFICATIONS: `${DJANGO_BASE_URL}/auth/parent-notifications/`,
+      MARK_PARENT_NOTIFICATION_READ: (notificationId) => `${DJANGO_BASE_URL}/auth/parent-notification/${notificationId}/read/`,
+      DELETE_PARENT_NOTIFICATION: (notificationId) => `${DJANGO_BASE_URL}/auth/parent-notification/${notificationId}/delete/`,
+      
+      // Student notification endpoints
+      SEND_STUDENT_MESSAGE: `${DJANGO_BASE_URL}/auth/send-student-message/`,
       FEEDBACK_SUBMIT: `${DJANGO_BASE_URL}/auth/feedback/submit/`,
       FEEDBACK_STATUS: `${DJANGO_BASE_URL}/auth/feedback/status/`,
       
@@ -178,6 +191,13 @@ export const API_CONFIG = {
     },
     LEADERBOARD: {
       GET_LEADERBOARD: `${DJANGO_BASE_URL}/auth/leaderboard/`,
+    },
+    
+    // Notifications
+    NOTIFICATIONS: {
+      GET_STUDENT_NOTIFICATIONS: `${DJANGO_BASE_URL}/notifications/student/list/`,
+      MARK_STUDENT_NOTIFICATION_READ: (notificationId) => `${DJANGO_BASE_URL}/notifications/student/${notificationId}/mark-read/`,
+      DELETE_STUDENT_NOTIFICATION: (notificationId) => `${DJANGO_BASE_URL}/notifications/student/${notificationId}/delete/`,
     },
   },
   

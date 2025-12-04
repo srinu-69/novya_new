@@ -1918,6 +1918,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { API_CONFIG, djangoAPI } from '../../config/api';
 
 const HeaderBar = ({ 
   selectedSection, 
@@ -1933,6 +1934,15 @@ const HeaderBar = ({
   const [darkMode, setDarkMode] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [profileData, setProfileData] = useState({
+    teacher_name: '',
+    email: '',
+    phone_number: '',
+    school: '',
+    department: ''
+  });
   
   const { t, i18n } = useTranslation();
 
@@ -1991,6 +2001,75 @@ const HeaderBar = ({
     localStorage.setItem('preferredLanguage', lng);
   };
 
+  // Fetch teacher profile when profile dropdown is opened
+  useEffect(() => {
+    if (showProfile && !isEditing) {
+      fetchTeacherProfile();
+    }
+  }, [showProfile]);
+
+  const fetchTeacherProfile = async () => {
+    try {
+      setIsLoading(true);
+      const response = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_PROFILE);
+      setProfileData({
+        teacher_name: response.teacher_name_display || response.teacher_name || '',
+        email: response.email || '',
+        phone_number: response.phone_number || '',
+        school: response.school || '',
+        department: response.department || ''
+      });
+    } catch (error) {
+      console.error('Error fetching teacher profile:', error);
+      // Set default values from localStorage if available
+      const teacherData = JSON.parse(localStorage.getItem('teacherData') || '{}');
+      setProfileData({
+        teacher_name: teacherData.firstName && teacherData.lastName 
+          ? `${teacherData.firstName} ${teacherData.lastName}` 
+          : teacherName,
+        email: teacherData.email || '',
+        phone_number: teacherData.phone || '',
+        school: '',
+        department: ''
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setProfileData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsLoading(true);
+      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.TEACHER_PROFILE_UPDATE, profileData);
+      setIsEditing(false);
+      setProfileData(response.profile);
+      // Show success message (you can add toast notification here)
+      alert('Profile updated successfully!');
+    } catch (error) {
+      console.error('Error updating teacher profile:', error);
+      alert('Failed to update profile. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    fetchTeacherProfile(); // Reset to original data
+  };
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -2002,6 +2081,7 @@ const HeaderBar = ({
       }
       if (showProfile && !event.target.closest('.user-profile-container')) {
         setShowProfile(false);
+        setIsEditing(false);
       }
     };
 
@@ -2173,25 +2253,112 @@ const HeaderBar = ({
                   <h3>Teacher Profile</h3>
                   <button
                     className="close-dropdown-btn"
-                    onClick={() => setShowProfile(false)}
+                    onClick={() => {
+                      setShowProfile(false);
+                      setIsEditing(false);
+                    }}
                   >
                     <i className="bi bi-x"></i>
                   </button>
                 </div>
-                <div className="profile-details">
-                  <div className="profile-avatar-large">
-                    <img
-                      src="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/d92aaad8-daf4-48e8-9313-bc4d45f82b91.png"
-                      alt="Teacher"
-                    />
+                
+                {isLoading ? (
+                  <div style={{ textAlign: 'center', padding: '2rem' }}>
+                    <p>Loading...</p>
                   </div>
-                  <div className="profile-info-details">
-                    <h4 className="profile-name-large">{teacherName}</h4>
-                    <p className="profile-email">teacher@school.edu</p>
-                    <p className="profile-subject">Mathematics Department</p>
-                    <p className="profile-experience">5 years experience</p>
-                  </div>
-                </div>
+                ) : (
+                  <form className="teacher-profile-form" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+                    <div className="profile-form-group">
+                      <label>Teacher Name</label>
+                      <input
+                        type="text"
+                        name="teacher_name"
+                        value={profileData.teacher_name}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="profile-form-group">
+                      <label>Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={profileData.email}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="profile-form-group">
+                      <label>Phone Number</label>
+                      <input
+                        type="tel"
+                        name="phone_number"
+                        value={profileData.phone_number}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="profile-form-group">
+                      <label>School</label>
+                      <input
+                        type="text"
+                        name="school"
+                        value={profileData.school}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        placeholder="Enter school name"
+                      />
+                    </div>
+                    
+                    <div className="profile-form-group">
+                      <label>Department</label>
+                      <input
+                        type="text"
+                        name="department"
+                        value={profileData.department}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        placeholder="Enter department"
+                      />
+                    </div>
+                    
+                    <div className="profile-form-actions">
+                      {!isEditing ? (
+                        <button
+                          type="button"
+                          className="edit-btn"
+                          onClick={handleEdit}
+                        >
+                          Edit
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="cancel-btn"
+                            onClick={handleCancel}
+                            disabled={isLoading}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="save-btn"
+                            disabled={isLoading}
+                          >
+                            {isLoading ? 'Saving...' : 'Save'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </form>
+                )}
               </div>
             )}
           </div>
@@ -2563,6 +2730,135 @@ const HeaderBar = ({
         .dark-mode .profile-subject,
         .dark-mode .profile-experience {
           color: #94a3b8;
+        }
+
+        /* Teacher Profile Form Styles */
+        .teacher-profile-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .profile-form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .profile-form-group label {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .dark-mode .profile-form-group label {
+          color: #e2e8f0;
+        }
+
+        .profile-form-group input {
+          padding: 0.75rem;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 0.95rem;
+          background: #ffffff;
+          color: #1e293b;
+          transition: all 0.2s ease;
+        }
+
+        .dark-mode .profile-form-group input {
+          background: #334155;
+          border-color: #475569;
+          color: #e2e8f0;
+        }
+
+        .profile-form-group input:disabled {
+          background: #f8fafc;
+          color: #64748b;
+          cursor: not-allowed;
+        }
+
+        .dark-mode .profile-form-group input:disabled {
+          background: #1e293b;
+          color: #94a3b8;
+        }
+
+        .profile-form-group input:focus {
+          outline: none;
+          border-color: #2D5D7B;
+          box-shadow: 0 0 0 3px rgba(45, 93, 123, 0.1);
+        }
+
+        .dark-mode .profile-form-group input:focus {
+          border-color: #2D5D7B;
+          box-shadow: 0 0 0 3px rgba(45, 93, 123, 0.2);
+        }
+
+        .profile-form-actions {
+          display: flex;
+          gap: 0.75rem;
+          margin-top: 0.5rem;
+          justify-content: flex-end;
+        }
+
+        .edit-btn,
+        .save-btn,
+        .cancel-btn {
+          padding: 0.75rem 1.5rem;
+          border: none;
+          border-radius: 8px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .edit-btn {
+          background: #2D5D7B;
+          color: white;
+          width: 100%;
+        }
+
+        .edit-btn:hover {
+          background: #1e3f5a;
+          transform: translateY(-1px);
+        }
+
+        .save-btn {
+          background: #10b981;
+          color: white;
+        }
+
+        .save-btn:hover:not(:disabled) {
+          background: #059669;
+          transform: translateY(-1px);
+        }
+
+        .save-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .cancel-btn {
+          background: #f1f5f9;
+          color: #64748b;
+        }
+
+        .dark-mode .cancel-btn {
+          background: #334155;
+          color: #94a3b8;
+        }
+
+        .cancel-btn:hover:not(:disabled) {
+          background: #e2e8f0;
+        }
+
+        .dark-mode .cancel-btn:hover:not(:disabled) {
+          background: #475569;
+        }
+
+        .cancel-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         /* Dropdown Styles */
