@@ -134,6 +134,14 @@ export const API_CONFIG = {
       UPDATE: `${DJANGO_BASE_URL}/progress/update/`,
     },
     
+    // Attendance
+    ATTENDANCE: {
+      LIST: `${DJANGO_BASE_URL}/progress/attendance/`,
+      CREATE: `${DJANGO_BASE_URL}/progress/attendance/`,
+      DETAIL: (id) => `${DJANGO_BASE_URL}/progress/attendance/${id}/`,
+      SUMMARY: `${DJANGO_BASE_URL}/progress/attendance/summary/`,
+    },
+    
     // Notifications
     NOTIFICATIONS: {
       LIST: `${DJANGO_BASE_URL}/notifications/`,

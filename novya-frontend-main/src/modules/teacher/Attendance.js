@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { djangoAPI, API_CONFIG } from '../../config/api';
 
 const Attendance = () => {
   const [activeTab, setActiveTab] = useState('daily');
   const [students, setStudents] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState({}); // { date: { studentId: status } }
+  const [timeData, setTimeData] = useState({}); // { date: { studentId: { checkIn, checkOut, hours } } }
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   const [selectedWeek, setSelectedWeek] = useState(getCurrentWeek());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Handle window resize for responsiveness
   useEffect(() => {
@@ -43,78 +48,312 @@ const Attendance = () => {
     return dates;
   }
 
-  // Enhanced student data
-  const studentDetailsData = [
-    { id: 1, name: 'John Doe', email: 'john@example.com' },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com' },
-    { id: 3, name: 'Mike Johnson', email: 'mike@example.com' },
-    { id: 4, name: 'Sarah Wilson', email: 'sarah@example.com' },
-    { id: 5, name: 'Tom Brown', email: 'tom@example.com' },
-    { id: 6, name: 'Emma Davis', email: 'emma@example.com' },
-    { id: 7, name: 'Alex Miller', email: 'alex@example.com' },
-    { id: 8, name: 'Lisa Garcia', email: 'lisa@example.com' },
-    { id: 9, name: 'Kevin Martinez', email: 'kevin@example.com' },
-    { id: 10, name: 'Amy Robinson', email: 'amy@example.com' }
-  ];
-
-  // Mock data for attendance management
+  // Fetch students and attendance data
   useEffect(() => {
-    const classes = ['Class 7A', 'Class 8B', 'Class 9A', 'Class 7B', 'Class 10A', 'Class 7C', 'Class 8A', 'Class 9B', 'Class 10B'];
-    const statusOptions = ['present', 'absent', 'late'];
-    
-    const mockStudents = studentDetailsData.map((student, index) => {
-      const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
-      let checkIn, checkOut, hours;
+    fetchStudentsAndAttendance();
+  }, [selectedDate, selectedMonth, selectedWeek]);
+
+  const fetchStudentsAndAttendance = async () => {
+    try {
+      setLoading(true);
       
-      switch (randomStatus) {
-        case 'present':
-          checkIn = '09:00';
-          checkOut = '17:00';
-          hours = 8.0;
-          break;
-        case 'late':
-          checkIn = '10:30';
-          checkOut = '17:00';
-          hours = 6.5;
-          break;
-        case 'absent':
-          checkIn = '-';
-          checkOut = '-';
-          hours = 0;
-          break;
-        default:
-          checkIn = '09:00';
-          checkOut = '17:00';
-          hours = 8.0;
-      }
+      // Fetch students from teacher's school
+      const studentsResponse = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_STUDENTS);
+      const studentsList = studentsResponse.students || [];
+      
+      // Process students data
+      const processedStudents = studentsList.map((student) => {
+        const firstName = student.user_info?.firstname || student.first_name || '';
+        const lastName = student.user_info?.lastname || student.last_name || '';
       
       return {
-        id: student.id,
-        name: student.name,
-        email: student.email,
-        class: classes[index % classes.length],
-        status: randomStatus,
-        checkIn: checkIn,
-        checkOut: checkOut,
-        hours: hours
+          id: student.student_id,
+          student_id: student.student_id,
+          name: `${firstName} ${lastName}`.trim() || 'Unknown',
+          email: student.user_info?.email || student.student_email || '',
+          class: student.profile?.grade || 'General',
       };
     });
     
-    setStudents(mockStudents);
-  }, []);
+      setStudents(processedStudents);
+      
+      // Fetch attendance records for the selected month
+      const monthStart = `${selectedMonth}-01`;
+      const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
+        .toISOString().split('T')[0];
+      
+      // Fetch attendance for all students in the month
+      const attendanceMap = {};
+      for (const student of processedStudents) {
+        try {
+          const attendanceUrl = `${API_CONFIG.DJANGO.ATTENDANCE.LIST}?student=${student.student_id}&date_from=${monthStart}&date_to=${monthEnd}`;
+          const attendanceResponse = await djangoAPI.get(attendanceUrl);
+          const records = Array.isArray(attendanceResponse) ? attendanceResponse : (attendanceResponse.results || []);
+          
+          records.forEach(record => {
+            const dateKey = record.date;
+            if (!attendanceMap[dateKey]) {
+              attendanceMap[dateKey] = {};
+            }
+            attendanceMap[dateKey][student.student_id] = {
+              status: record.status,
+              id: record.id,
+              remarks: record.remarks || '',
+              check_in_time: record.check_in_time || null,
+              check_out_time: record.check_out_time || null,
+              hours_attended: record.hours_attended || null
+            };
+          });
+        } catch (error) {
+          console.error(`Error fetching attendance for student ${student.student_id}:`, error);
+        }
+      }
+      
+      setAttendanceRecords(attendanceMap);
+      
+      // Also populate timeData from fetched records
+      const timeMap = {};
+      for (const student of processedStudents) {
+        try {
+          const attendanceUrl = `${API_CONFIG.DJANGO.ATTENDANCE.LIST}?student=${student.student_id}&date_from=${monthStart}&date_to=${monthEnd}`;
+          const attendanceResponse = await djangoAPI.get(attendanceUrl);
+          const records = Array.isArray(attendanceResponse) ? attendanceResponse : (attendanceResponse.results || []);
+          
+          records.forEach(record => {
+            const recordDate = record.date;
+            if (!timeMap[recordDate]) timeMap[recordDate] = {};
+            if (!timeMap[recordDate][student.student_id]) timeMap[recordDate][student.student_id] = {};
+            
+            timeMap[recordDate][student.student_id] = {
+              checkIn: record.check_in_time || '-',
+              checkOut: record.check_out_time || '-',
+              hours: record.hours_attended || 0
+            };
+          });
+        } catch (error) {
+          console.error(`Error fetching time data for student ${student.student_id}:`, error);
+        }
+      }
+      setTimeData(prev => ({ ...prev, ...timeMap }));
+    } catch (error) {
+      console.error('Error fetching students and attendance:', error);
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const handleStatusChange = (studentId, status) => {
-    setStudents(prev => prev.map(student => 
-      student.id === studentId 
-        ? { 
-            ...student, 
-            status,
-            checkIn: status === 'present' ? '09:00' : (status === 'late' ? '10:30' : '-'),
-            checkOut: status === 'present' ? '17:00' : (status === 'late' ? '17:00' : '-'),
-            hours: status === 'present' ? 8.0 : (status === 'late' ? 6.5 : 0)
+  const handleStatusChange = async (studentId, status, date = selectedDate) => {
+    try {
+      setSaving(true);
+      
+      // Check if attendance record already exists for this date and student
+      const existingRecord = attendanceRecords[date]?.[studentId];
+      
+      // Get a default subject ID (using 1 as fallback, but ideally should fetch from API)
+      // For now, we'll try to use subject_id from the existing record if available
+      const defaultSubjectId = existingRecord?.subject_id || 1;
+      
+      // Get teacher ID from localStorage or fetch from API
+      let teacherId = null;
+      try {
+        const userId = parseInt(localStorage.getItem('userId') || '0');
+        // Try to get teacher registration ID - backend will handle this if not provided
+        // For now, we'll let the backend serializer get it from the request user
+        teacherId = userId; // This will be used by backend to find teacher_registration
+      } catch (error) {
+        console.warn('Could not get teacher ID:', error);
+      }
+      
+      // Get check-in/check-out times from state or record
+      const timeInfo = timeData[date]?.[studentId];
+      const record = attendanceRecords[date]?.[studentId];
+      const checkInTime = timeInfo?.checkIn || record?.check_in_time || (status === 'present' ? '09:00' : status === 'late' ? '10:30' : null);
+      const checkOutTime = timeInfo?.checkOut || record?.check_out_time || (status === 'present' || status === 'late' ? '17:00' : null);
+      
+      // Calculate hours if both times are provided
+      let calculatedHours = 0;
+      if (checkInTime && checkOutTime && checkInTime !== '-' && checkOutTime !== '-') {
+        calculatedHours = calculateHours(checkInTime, checkOutTime);
+      } else if (record?.hours_attended) {
+        calculatedHours = record.hours_attended;
+      } else if (status === 'present') {
+        calculatedHours = 8.0;
+      } else if (status === 'late') {
+        calculatedHours = 6.5;
+      }
+      
+      const attendanceData = {
+        student_id: studentId,
+        date: date,
+        status: status,
+        subject_id: defaultSubjectId, // Backend serializer will map this to course_id
+        teacher_id: teacherId, // Backend will resolve this to teacher_registration.teacher_id
+        remarks: status === 'late' ? 'Student arrived late' : '',
+        check_in_time: checkInTime && checkInTime !== '-' ? checkInTime : null,
+        check_out_time: checkOutTime && checkOutTime !== '-' ? checkOutTime : null,
+        hours_attended: calculatedHours > 0 ? calculatedHours : null
+      };
+      
+      if (existingRecord?.id) {
+        // Update existing record
+        await djangoAPI.put(API_CONFIG.DJANGO.ATTENDANCE.DETAIL(existingRecord.id), attendanceData);
+      } else {
+        // Create new record with teacher_id
+        await djangoAPI.post(API_CONFIG.DJANGO.ATTENDANCE.CREATE, attendanceData);
+      }
+      
+      // Update local state
+      setAttendanceRecords(prev => {
+        const newRecords = { ...prev };
+        if (!newRecords[date]) {
+          newRecords[date] = {};
+        }
+        newRecords[date][studentId] = {
+          status: status,
+          id: existingRecord?.id || Date.now(), // Temporary ID if new
+          remarks: attendanceData.remarks,
+          check_in_time: attendanceData.check_in_time,
+          check_out_time: attendanceData.check_out_time,
+          hours_attended: attendanceData.hours_attended
+        };
+        return newRecords;
+      });
+      
+      // Update timeData state
+      setTimeData(prev => {
+        const newData = { ...prev };
+        if (!newData[date]) newData[date] = {};
+        if (!newData[date][studentId]) newData[date][studentId] = {};
+        newData[date][studentId] = {
+          checkIn: attendanceData.check_in_time || '-',
+          checkOut: attendanceData.check_out_time || '-',
+          hours: attendanceData.hours_attended || 0
+        };
+        return newData;
+      });
+      
+      // Refresh data to get the actual ID from backend
+      await fetchStudentsAndAttendance();
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      alert('Failed to save attendance. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Get student status for a specific date
+  const getStudentStatus = (studentId, date) => {
+    return attendanceRecords[date]?.[studentId]?.status || null;
+  };
+  
+  // Calculate hours from check-in and check-out times
+  const calculateHours = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut || checkIn === '-' || checkOut === '-') return 0;
+    
+    try {
+      const [inHours, inMinutes] = checkIn.split(':').map(Number);
+      const [outHours, outMinutes] = checkOut.split(':').map(Number);
+      
+      const inTime = inHours * 60 + inMinutes;
+      const outTime = outHours * 60 + outMinutes;
+      
+      if (outTime <= inTime) return 0;
+      
+      const diffMinutes = outTime - inTime;
+      const hours = diffMinutes / 60;
+      return Math.round(hours * 10) / 10; // Round to 1 decimal place
+    } catch (error) {
+      return 0;
+    }
+  };
+  
+  // Handle time change and auto-save
+  const handleTimeChange = async (studentId, date, field, value) => {
+    setTimeData(prev => {
+      const newData = { ...prev };
+      if (!newData[date]) newData[date] = {};
+      if (!newData[date][studentId]) newData[date][studentId] = { checkIn: '-', checkOut: '-', hours: 0 };
+      
+      newData[date][studentId][field] = value;
+      
+      // Calculate hours if both times are set
+      let calculatedHours = 0;
+      if (field === 'checkIn' && newData[date][studentId].checkOut && newData[date][studentId].checkOut !== '-') {
+        calculatedHours = calculateHours(value, newData[date][studentId].checkOut);
+      } else if (field === 'checkOut' && newData[date][studentId].checkIn && newData[date][studentId].checkIn !== '-') {
+        calculatedHours = calculateHours(newData[date][studentId].checkIn, value);
+      }
+      
+      newData[date][studentId].hours = calculatedHours;
+      
+      // Auto-save to backend if record exists
+      const record = attendanceRecords[date]?.[studentId];
+      if (record?.id && (field === 'checkOut' || (field === 'checkIn' && newData[date][studentId].checkOut && newData[date][studentId].checkOut !== '-'))) {
+        // Save after a short delay to avoid too many API calls
+        setTimeout(async () => {
+          try {
+            const existingRecord = attendanceRecords[date]?.[studentId];
+            const defaultSubjectId = existingRecord?.subject_id || 1;
+            let teacherId = null;
+            try {
+              const userId = parseInt(localStorage.getItem('userId') || '0');
+              teacherId = userId;
+            } catch (error) {
+              console.warn('Could not get teacher ID:', error);
+            }
+            
+            const attendanceData = {
+              student_id: studentId,
+              date: date,
+              status: existingRecord?.status || 'present',
+              subject_id: defaultSubjectId,
+              teacher_id: teacherId,
+              check_in_time: newData[date][studentId].checkIn !== '-' ? newData[date][studentId].checkIn : null,
+              check_out_time: newData[date][studentId].checkOut !== '-' ? newData[date][studentId].checkOut : null,
+              hours_attended: calculatedHours > 0 ? calculatedHours : null
+            };
+            
+            await djangoAPI.put(API_CONFIG.DJANGO.ATTENDANCE.DETAIL(existingRecord.id), attendanceData);
+            
+            // Update attendanceRecords with new time data
+            setAttendanceRecords(prev => {
+              const updated = { ...prev };
+              if (!updated[date]) updated[date] = {};
+              if (!updated[date][studentId]) updated[date][studentId] = {};
+              updated[date][studentId] = {
+                ...updated[date][studentId],
+                check_in_time: attendanceData.check_in_time,
+                check_out_time: attendanceData.check_out_time,
+                hours_attended: attendanceData.hours_attended
+              };
+              return updated;
+            });
+          } catch (error) {
+            console.error('Error saving time data:', error);
           }
-        : student
-    ));
+        }, 500); // 500ms delay to debounce
+      }
+      
+      return newData;
+    });
+  };
+  
+  // Get student status with default values
+  const getStudentStatusWithDefaults = (studentId, date) => {
+    const status = getStudentStatus(studentId, date);
+    const record = attendanceRecords[date]?.[studentId];
+    const timeInfo = timeData[date]?.[studentId];
+    
+    // Use actual data from record if available, otherwise use timeData state, otherwise defaults
+    const checkIn = record?.check_in_time || timeInfo?.checkIn || (status === 'present' ? '09:00' : status === 'late' ? '10:30' : '-');
+    const checkOut = record?.check_out_time || timeInfo?.checkOut || (status === 'present' || status === 'late' ? '17:00' : '-');
+    const hours = record?.hours_attended || timeInfo?.hours || (status === 'present' ? 8.0 : status === 'late' ? 6.5 : 0);
+    
+    if (!status) return { status: null, checkIn: '-', checkOut: '-', hours: 0 };
+    
+    return { status, checkIn, checkOut, hours };
   };
 
   const getStatusColor = (status) => {
@@ -202,54 +441,57 @@ const Attendance = () => {
     document.body.removeChild(link);
   };
 
-  const saveAttendance = () => {
-    const data = {
-      date: selectedDate,
-      timestamp: new Date().toISOString(),
-      students: students,
-      summary: {
-        present: presentCount,
-        absent: absentCount,
-        late: lateCount,
-        total: students.length
-      }
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance_backup_${selectedDate.replace(/-/g, '_')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
+  const saveAttendance = async () => {
+    try {
+      setSaving(true);
+      
+      // Save all attendance for the selected date
+      const promises = students.map(async (student) => {
+        const status = getStudentStatus(student.id, selectedDate);
+        if (status) {
+          await handleStatusChange(student.id, status, selectedDate);
+        }
+      });
+      
+      await Promise.all(promises);
     alert('Attendance data saved successfully!');
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      alert('Failed to save attendance. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Statistics
-  const presentCount = students.filter(s => s.status === 'present').length;
-  const absentCount = students.filter(s => s.status === 'absent').length;
-  const lateCount = students.filter(s => s.status === 'late').length;
+  // Statistics for selected date
+  const presentCount = students.filter(s => getStudentStatus(s.id, selectedDate) === 'present').length;
+  const absentCount = students.filter(s => getStudentStatus(s.id, selectedDate) === 'absent').length;
+  const lateCount = students.filter(s => getStudentStatus(s.id, selectedDate) === 'late').length;
 
   // Weekly dates
   const weekDates = getWeekDates(selectedWeek);
   
-  // Generate weekly attendance data
+  // Generate weekly attendance data from real records
   const weeklyAttendanceData = students.map(student => {
     const weekData = {};
     const dailyHours = {};
     weekDates.forEach(date => {
-      const randomStatus = ['present', 'absent', 'late'][Math.floor(Math.random() * 3)];
-      weekData[date] = randomStatus;
-      dailyHours[date] = randomStatus === 'present' ? 8 : (randomStatus === 'late' ? 6.5 : 0);
+      const status = getStudentStatus(student.id, date);
+      weekData[date] = status || null;
+      if (status === 'present') {
+        dailyHours[date] = 8;
+      } else if (status === 'late') {
+        dailyHours[date] = 6.5;
+      } else {
+        dailyHours[date] = 0;
+      }
     });
     
     const presentDays = Object.values(weekData).filter(status => status === 'present').length;
     const lateDays = Object.values(weekData).filter(status => status === 'late').length;
     const totalHours = Object.values(dailyHours).reduce((sum, hours) => sum + hours, 0);
-    const weeklyPercentage = Math.round((presentDays / 7) * 100);
+    const markedDays = Object.values(weekData).filter(status => status !== null).length;
+    const weeklyPercentage = markedDays > 0 ? Math.round((presentDays / markedDays) * 100) : 0;
     
     return {
       ...student,
@@ -262,13 +504,28 @@ const Attendance = () => {
     };
   });
 
-  // Monthly data with real calculations
+  // Monthly data with real calculations from attendance records
   const monthlyData = students.map(student => {
-    const presentDays = Math.floor(Math.random() * 15) + 10;
-    const absentDays = Math.floor(Math.random() * 5);
-    const lateDays = Math.floor(Math.random() * 3);
+    const monthStart = `${selectedMonth}-01`;
+    const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
+      .toISOString().split('T')[0];
+    
+    let presentDays = 0;
+    let absentDays = 0;
+    let lateDays = 0;
+    
+    // Count attendance for the month
+    Object.keys(attendanceRecords).forEach(date => {
+      if (date >= monthStart && date <= monthEnd) {
+        const status = attendanceRecords[date]?.[student.id]?.status;
+        if (status === 'present') presentDays++;
+        else if (status === 'absent') absentDays++;
+        else if (status === 'late') lateDays++;
+      }
+    });
+    
     const totalDays = presentDays + absentDays + lateDays;
-    const percentage = Math.round((presentDays / totalDays) * 100);
+    const percentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
     const totalHours = presentDays * 8 + lateDays * 6.5;
     
     return {
@@ -335,10 +592,14 @@ const Attendance = () => {
       </div>
 
       <div style={styles.tableContainer}>
-        {isMobile ? (
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>Loading students and attendance...</div>
+        ) : isMobile ? (
           // Mobile View
           <div style={styles.mobileTable}>
-            {students.map(student => (
+            {students.map(student => {
+              const studentData = getStudentStatusWithDefaults(student.id, selectedDate);
+              return (
               <div key={student.id} style={styles.mobileCard}>
                 <div style={styles.cardHeader}>
                   <div style={styles.avatar}>
@@ -349,42 +610,79 @@ const Attendance = () => {
                     <div style={styles.studentEmail}>{student.email}</div>
                     <div style={styles.studentClass}>{student.class}</div>
                   </div>
+                    {studentData.status && (
                   <span style={{
                     ...styles.statusBadge,
-                    backgroundColor: getStatusColor(student.status)
+                        backgroundColor: getStatusColor(studentData.status)
                   }}>
-                    {getStatusText(student.status)}
+                        {getStatusText(studentData.status)}
                   </span>
+                    )}
                 </div>
                 
                 <div style={styles.cardDetails}>
                   <div style={styles.detailRow}>
                     <span style={styles.detailLabel}>Check-In:</span>
-                    <span style={styles.detailValue}>{student.checkIn}</span>
+                    <input
+                      type="time"
+                      value={studentData.checkIn !== '-' ? studentData.checkIn : ''}
+                      onChange={(e) => {
+                        const value = e.target.value || '-';
+                        handleTimeChange(student.id, selectedDate, 'checkIn', value);
+                      }}
+                      style={{
+                        padding: '6px 8px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        width: '100px'
+                      }}
+                      disabled={!studentData.status || studentData.status === 'absent'}
+                    />
                   </div>
                   <div style={styles.detailRow}>
                     <span style={styles.detailLabel}>Check-Out:</span>
-                    <span style={styles.detailValue}>{student.checkOut}</span>
+                    <input
+                      type="time"
+                      value={studentData.checkOut !== '-' ? studentData.checkOut : ''}
+                      onChange={(e) => {
+                        const value = e.target.value || '-';
+                        handleTimeChange(student.id, selectedDate, 'checkOut', value);
+                      }}
+                      style={{
+                        padding: '6px 8px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        width: '100px'
+                      }}
+                      disabled={!studentData.status || studentData.status === 'absent'}
+                    />
                   </div>
                   <div style={styles.detailRow}>
                     <span style={styles.detailLabel}>Hours:</span>
-                    <span style={styles.detailValue}>{student.hours}</span>
+                    <span style={{ ...styles.detailValue, fontWeight: 'bold', color: '#2D5D7B' }}>
+                      {studentData.hours > 0 ? `${studentData.hours}h` : '-'}
+                    </span>
                   </div>
                 </div>
                 
                 <div style={styles.cardActions}>
                   <select
-                    value={student.status}
-                    onChange={(e) => handleStatusChange(student.id, e.target.value)}
+                      value={studentData.status || ''}
+                      onChange={(e) => handleStatusChange(student.id, e.target.value, selectedDate)}
                     style={styles.statusSelect}
+                      disabled={saving}
                   >
+                      <option value="">Not Marked</option>
                     <option value="present">Present</option>
                     <option value="absent">Absent</option>
                     <option value="late">Late</option>
                   </select>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           // Desktop Table
@@ -402,7 +700,9 @@ const Attendance = () => {
               </tr>
             </thead>
             <tbody>
-              {students.map(student => (
+              {students.map(student => {
+                const studentData = getStudentStatusWithDefaults(student.id, selectedDate);
+                return (
                 <tr key={student.id} style={styles.tableRow}>
                   <td style={styles.td}>
                     <div style={styles.nameCell}>
@@ -417,29 +717,76 @@ const Attendance = () => {
                   <td style={styles.td}>{student.email}</td>
                   <td style={styles.td}>{student.class}</td>
                   <td style={styles.td}>
+                      {studentData.status ? (
                     <span style={{
                       ...styles.statusBadge,
-                      backgroundColor: getStatusColor(student.status)
+                          backgroundColor: getStatusColor(studentData.status)
                     }}>
-                      {getStatusText(student.status)}
+                          {getStatusText(studentData.status)}
                     </span>
+                      ) : (
+                        <span style={{ color: '#B0BEC5' }}>Not Marked</span>
+                      )}
                   </td>
-                  <td style={styles.td}>{student.checkIn}</td>
-                  <td style={styles.td}>{student.checkOut}</td>
-                  <td style={styles.td}>{student.hours}</td>
+                    <td style={styles.td}>
+                      <input
+                        type="time"
+                        value={studentData.checkIn !== '-' ? studentData.checkIn : ''}
+                        onChange={(e) => {
+                          const value = e.target.value || '-';
+                          handleTimeChange(student.id, selectedDate, 'checkIn', value);
+                        }}
+                        style={{
+                          padding: '6px 8px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          width: '100px',
+                          minWidth: '80px'
+                        }}
+                        disabled={!studentData.status || studentData.status === 'absent'}
+                      />
+                    </td>
+                    <td style={styles.td}>
+                      <input
+                        type="time"
+                        value={studentData.checkOut !== '-' ? studentData.checkOut : ''}
+                        onChange={(e) => {
+                          const value = e.target.value || '-';
+                          handleTimeChange(student.id, selectedDate, 'checkOut', value);
+                        }}
+                        style={{
+                          padding: '6px 8px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          width: '100px',
+                          minWidth: '80px'
+                        }}
+                        disabled={!studentData.status || studentData.status === 'absent'}
+                      />
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontWeight: 'bold', color: '#2D5D7B' }}>
+                        {studentData.hours > 0 ? `${studentData.hours}h` : '-'}
+                      </span>
+                    </td>
                   <td style={styles.td}>
                     <select
-                      value={student.status}
-                      onChange={(e) => handleStatusChange(student.id, e.target.value)}
+                        value={studentData.status || ''}
+                        onChange={(e) => handleStatusChange(student.id, e.target.value, selectedDate)}
                       style={styles.statusSelect}
+                        disabled={saving}
                     >
+                        <option value="">Not Marked</option>
                       <option value="present">Present</option>
                       <option value="absent">Absent</option>
                       <option value="late">Late</option>
                     </select>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -601,16 +948,29 @@ const Attendance = () => {
                     </div>
                   </td>
                   <td style={styles.td}>{student.class}</td>
-                  {weekDates.map((date, index) => (
+                  {weekDates.map((date, index) => {
+                    const status = student.weekData[date];
+                    return (
                     <td key={index} style={styles.td}>
-                      <span style={{
-                        ...styles.smallStatusBadge,
-                        backgroundColor: getStatusColor(student.weekData[date])
-                      }}>
-                        {student.weekData[date].charAt(0).toUpperCase()}
-                      </span>
+                        <select
+                          value={status || ''}
+                          onChange={(e) => handleStatusChange(student.id, e.target.value, date)}
+                          style={{
+                            ...styles.statusSelect,
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            minWidth: '80px'
+                          }}
+                          disabled={saving}
+                        >
+                          <option value="">-</option>
+                          <option value="present">P</option>
+                          <option value="absent">A</option>
+                          <option value="late">L</option>
+                        </select>
                     </td>
-                  ))}
+                    );
+                  })}
                   <td style={styles.td}>
                     <strong>{student.presentDays}/7</strong>
                   </td>

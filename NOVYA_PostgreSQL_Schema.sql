@@ -487,6 +487,27 @@ CREATE TABLE assignment_answer (
     FOREIGN KEY (question_id) REFERENCES assignment_question(question_id)
 );
 
+-- Attendance
+-- Tracks student attendance marked by teachers in real-time
+CREATE TABLE attendance (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    course_id INTEGER NOT NULL,
+    teacher_id INTEGER, -- Teacher who marked the attendance (nullable for backward compatibility)
+    date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+    remarks TEXT,
+    check_in_time TIME, -- Optional: Time when student checked in (for present/late status)
+    check_out_time TIME, -- Optional: Time when student checked out
+    hours_attended DECIMAL(4,2), -- Calculated hours based on check-in/check-out
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES course(course_id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id) REFERENCES teacher_registration(teacher_id) ON DELETE SET NULL,
+    CONSTRAINT uq_attendance_student_course_date UNIQUE (student_id, course_id, date)
+);
+
 -- Career Performance
 CREATE TABLE careerperformance (
     performance_id SERIAL PRIMARY KEY,
@@ -941,6 +962,15 @@ CREATE INDEX idx_parent_notifications_date ON parent_notifications(created_at);
 CREATE INDEX idx_pdffiles_course_topic ON pdffiles(course_id, topic_id);
 CREATE INDEX idx_videofiles_course_topic ON videofiles(course_id, topic_id);
 
+-- Attendance Indexes
+CREATE INDEX idx_attendance_student ON attendance(student_id);
+CREATE INDEX idx_attendance_course ON attendance(course_id);
+CREATE INDEX idx_attendance_teacher ON attendance(teacher_id);
+CREATE INDEX idx_attendance_date ON attendance(date);
+CREATE INDEX idx_attendance_student_date ON attendance(student_id, date);
+CREATE INDEX idx_attendance_course_date ON attendance(course_id, date);
+CREATE INDEX idx_attendance_status ON attendance(status);
+
 -- =====================================================
 -- SAMPLE DATA FOR TESTING
 -- =====================================================
@@ -1005,6 +1035,8 @@ COMMENT ON TABLE user_coin_balance IS 'Stores current coin balance for each user
 COMMENT ON TABLE student_feedback IS 'Stores feedback from students with rating and comments';
 COMMENT ON TABLE student_notifications IS 'Stores study plan notifications for students';
 COMMENT ON TABLE parent_notifications IS 'Stores notifications sent by teachers to parents about specific students';
+COMMENT ON TABLE attendance IS 'Tracks student attendance marked by teachers in real-time with check-in/check-out times and hours attended';
+COMMENT ON TABLE attendance IS 'Tracks student attendance marked by teachers in real-time with check-in/check-out times';
 
 -- =====================================================
 -- SCHEMA COMPLETE

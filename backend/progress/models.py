@@ -1,5 +1,5 @@
 from django.db import models
-from authentication.models import User, Student, StudentRegistration
+from authentication.models import User, Student, StudentRegistration, TeacherRegistration
 from courses.models import Course, Topic
 
 
@@ -136,7 +136,7 @@ class MentorshipTicket(models.Model):
 # Legacy models for backward compatibility (if needed)
 class Attendance(models.Model):
     """
-    Attendance model for backward compatibility
+    Attendance model - tracks student attendance marked by teachers in real-time
     """
     STATUS_CHOICES = [
         ('present', 'Present'),
@@ -145,15 +145,22 @@ class Attendance(models.Model):
         ('excused', 'Excused'),
     ]
     
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    student = models.ForeignKey('authentication.StudentRegistration', on_delete=models.CASCADE, db_column='student_id', related_name='attendance_records')
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, db_column='course_id')
+    teacher = models.ForeignKey('authentication.TeacherRegistration', on_delete=models.CASCADE, db_column='teacher_id', null=True, blank=True)
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     remarks = models.TextField(blank=True, null=True)
+    check_in_time = models.TimeField(blank=True, null=True)
+    check_out_time = models.TimeField(blank=True, null=True)
+    hours_attended = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.student.student_id.firstname} - {self.date} - {self.status}"
+        teacher_name = f" by {self.teacher.first_name} {self.teacher.last_name}" if self.teacher else ""
+        student_name = f"{self.student.first_name} {self.student.last_name}" if self.student else "Unknown"
+        return f"{student_name} - {self.date} - {self.status}{teacher_name}"
     
     class Meta:
         db_table = 'attendance'

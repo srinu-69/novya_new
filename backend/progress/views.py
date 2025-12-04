@@ -33,9 +33,32 @@ class AttendanceListCreateView(generics.ListCreateAPIView):
         date_to = self.request.query_params.get('date_to')
         
         if student_id:
-            queryset = queryset.filter(student_id=student_id)
+            # student_id can be either userid (from users table) or student_id (from student_registration)
+            # Try to resolve it to student_registration.student_id
+            try:
+                from authentication.models import User, StudentRegistration
+                # First try as userid
+                try:
+                    user = User.objects.get(userid=student_id)
+                    # Try to find StudentRegistration by username or email
+                    student_reg = StudentRegistration.objects.filter(
+                        student_username=user.username
+                    ).first()
+                    if student_reg:
+                        queryset = queryset.filter(student_id=student_reg.student_id)
+                    else:
+                        # Fallback: try direct student_id match
+                        queryset = queryset.filter(student_id=student_id)
+                except User.DoesNotExist:
+                    # If not found as userid, try as student_registration.student_id directly
+                    queryset = queryset.filter(student_id=student_id)
+            except Exception as e:
+                # Fallback: use student_id directly
+                queryset = queryset.filter(student_id=student_id)
+        
         if subject_id:
-            queryset = queryset.filter(subject_id=subject_id)
+            # Filter by course_id (subject_id maps to course_id)
+            queryset = queryset.filter(course_id=subject_id)
         if date_from:
             queryset = queryset.filter(date__gte=date_from)
         if date_to:

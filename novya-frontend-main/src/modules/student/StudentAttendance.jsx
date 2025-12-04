@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import "./studentAttendance.css";
 import {
   FaCalendarAlt,
@@ -9,6 +9,7 @@ import {
   FaChevronLeft,
   FaChevronRight,
 } from "react-icons/fa";
+import { djangoAPI, API_CONFIG } from "../../config/api";
 
 // Helpers
 const getDaysInMonth = (month, year) =>
@@ -31,7 +32,7 @@ const formatFullDateLabel = (dateStr) => {
 };
 
 const StudentAttendance = () => {
-  const today = new Date(2025, 11, 2);
+  const today = new Date();
   const [selectedView, setSelectedView] = useState("daily");
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -41,29 +42,93 @@ const StudentAttendance = () => {
   const [calendarMonth, setCalendarMonth] = useState(today.getMonth());
   const [calendarYear, setCalendarYear] = useState(today.getFullYear());
   const [selectedWeek, setSelectedWeek] = useState(1);
+  const [attendance, setAttendance] = useState([]);
+  const [studentInfo, setStudentInfo] = useState({ name: "", email: "", className: "" });
+  const [loading, setLoading] = useState(true);
 
   const TOTAL_DAYS = getDaysInMonth(selectedMonth, selectedYear);
 
-  // MOCK API
-  const apiResponse = {
-    studentId: 1,
-    name: "John Doe",
-    email: "john@example.com",
-    className: "Class 7A",
-    attendance: [
-      { date: "2025-12-01", status: "Present", hours: 8 },
-      { date: "2025-12-02", status: "Absent", hours: 0 },
-      { date: "2025-12-03", status: "Late", hours: 6.5 },
-      { date: "2025-12-04", status: "Present", hours: 8 },
-      { date: "2025-12-05", status: "Present", hours: 7.9 },
-    ],
+  // Fetch student info and attendance
+  useEffect(() => {
+    fetchStudentAttendance();
+  }, [selectedMonth, selectedYear]);
+
+  const fetchStudentAttendance = async () => {
+    try {
+      setLoading(true);
+      
+      // Get student ID from localStorage
+      const studentId = parseInt(localStorage.getItem('userId') || '0');
+      
+      // Fetch student profile info
+      try {
+        const profileResponse = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.USER_PROFILE);
+        const firstName = profileResponse.firstname || profileResponse.first_name || '';
+        const lastName = profileResponse.lastname || profileResponse.last_name || '';
+        const email = profileResponse.email || '';
+        const grade = profileResponse.grade || profileResponse.profile?.grade || 'General';
+        
+        setStudentInfo({
+          name: `${firstName} ${lastName}`.trim() || 'Student',
+          email: email,
+          className: grade
+        });
+      } catch (error) {
+        console.error('Error fetching student profile:', error);
+      }
+      
+      // Fetch attendance for the selected month
+      const monthStart = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+      const monthEnd = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+      
+      // Also fetch data for previous/next month's weeks that might overlap
+      const firstDay = new Date(selectedYear, selectedMonth, 1);
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+      const startOfWeek = new Date(firstDay);
+      startOfWeek.setDate(firstDay.getDate() - (firstDay.getDay() || 7) + 1);
+      const endOfWeek = new Date(lastDay);
+      endOfWeek.setDate(lastDay.getDate() + (7 - (lastDay.getDay() || 7)));
+      
+      // Use extended date range to include overlapping weeks
+      const extendedStart = startOfWeek.toISOString().split('T')[0];
+      const extendedEnd = endOfWeek.toISOString().split('T')[0];
+      
+      const attendanceUrl = `${API_CONFIG.DJANGO.ATTENDANCE.LIST}?student=${studentId}&date_from=${extendedStart}&date_to=${extendedEnd}`;
+      const attendanceResponse = await djangoAPI.get(attendanceUrl);
+      const records = Array.isArray(attendanceResponse) ? attendanceResponse : (attendanceResponse.results || []);
+      
+      // Transform attendance data - keep all records for weekly view (includes overlapping weeks)
+      const transformedAttendance = records.map(record => {
+        let hours = 0;
+        if (record.status === 'present') hours = 8;
+        else if (record.status === 'late') hours = 6.5;
+        
+        return {
+          date: record.date,
+          status: record.status === 'present' ? 'Present' : 
+                  record.status === 'absent' ? 'Absent' : 
+                  record.status === 'late' ? 'Late' : 'Not Marked',
+          hours: hours
+        };
+      });
+      
+      setAttendance(transformedAttendance);
+    } catch (error) {
+      console.error('Error fetching attendance:', error);
+      setAttendance([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const { name, email, className, attendance } = apiResponse;
+  const { name, email, className } = studentInfo;
 
-  // Build month records
+  // Build month records - only for the selected month
   const fullMonthRecords = useMemo(() => {
     const list = [];
+    const firstDay = new Date(selectedYear, selectedMonth, 1);
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+    
     for (let d = 1; d <= TOTAL_DAYS; d++) {
       const dateStr = makeDateString(selectedYear, selectedMonth, d);
       const found = attendance.find((r) => r.date === dateStr);
@@ -103,31 +168,74 @@ const StudentAttendance = () => {
       ? fullMonthRecords.filter((r) => r.status === selectedStatus)
       : [];
 
-  // Weekly calc
+  // Get actual calendar week dates for the selected month
+  const getWeekDatesForMonth = (weekNumber) => {
+    const firstDay = new Date(selectedYear, selectedMonth, 1);
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+    const startOfWeek = new Date(firstDay);
+    startOfWeek.setDate(firstDay.getDate() - (firstDay.getDay() || 7) + 1); // Monday
+    
+    const weekStart = new Date(startOfWeek);
+    weekStart.setDate(startOfWeek.getDate() + (weekNumber - 1) * 7);
+    
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + i);
+      if (date >= firstDay && date <= lastDay) {
+        dates.push(makeDateString(date.getFullYear(), date.getMonth(), date.getDate()));
+      }
+    }
+    return dates;
+  };
+
+  // Calculate number of weeks in the month
+  const getWeeksInMonth = () => {
+    const firstDay = new Date(selectedYear, selectedMonth, 1);
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+    const startOfWeek = new Date(firstDay);
+    startOfWeek.setDate(firstDay.getDate() - (firstDay.getDay() || 7) + 1);
+    
+    const endOfWeek = new Date(lastDay);
+    endOfWeek.setDate(lastDay.getDate() + (7 - (lastDay.getDay() || 7)));
+    
+    const diffTime = endOfWeek - startOfWeek;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.ceil(diffDays / 7);
+  };
+
+  // Weekly calc - using actual calendar weeks (includes overlapping weeks)
   const weeklyStats = useMemo(() => {
-    return [1, 2, 3, 4, 5].map((week) => {
-      const set = fullMonthRecords.filter(
-        (r) => getWeekOfMonth(r.date) === week
-      );
+    const weeksCount = getWeeksInMonth();
+    return Array.from({ length: weeksCount }, (_, i) => {
+      const weekNum = i + 1;
+      const weekDates = getWeekDatesForMonth(weekNum);
+      // Use all attendance records (including overlapping weeks) for weekly view
+      const set = attendance.filter((r) => weekDates.includes(r.date));
+      
       if (!set.length)
-        return { week, present: 0, absent: 0, late: 0, percent: 0 };
+        return { week: weekNum, present: 0, absent: 0, late: 0, percent: 0, dates: weekDates };
       const p = set.filter((r) => r.status === "Present").length;
       const a = set.filter((r) => r.status === "Absent").length;
       const l = set.filter((r) => r.status === "Late").length;
       const total = p + a + l;
       return {
-        week,
+        week: weekNum,
         present: p,
         absent: a,
         late: l,
         percent: total ? Math.round((p / total) * 100) : 0,
+        dates: weekDates,
       };
     });
-  }, [fullMonthRecords]);
+  }, [attendance, selectedMonth, selectedYear]);
 
-  const weeklyRecords = fullMonthRecords.filter(
-    (r) => getWeekOfMonth(r.date) === selectedWeek
-  );
+  const weeklyRecords = useMemo(() => {
+    const selectedWeekData = weeklyStats.find((w) => w.week === selectedWeek);
+    if (!selectedWeekData) return [];
+    // Use all attendance records for weekly view (includes overlapping weeks)
+    return attendance.filter((r) => selectedWeekData.dates.includes(r.date));
+  }, [weeklyStats, selectedWeek, attendance]);
 
   // Monthly summary
   const monthlyOverview = useMemo(() => {
@@ -159,14 +267,27 @@ const StudentAttendance = () => {
     // UPDATE sheet month
     setSelectedMonth(m);
     setSelectedYear(y);
+    // Reset selected week when month changes
+    setSelectedWeek(1);
   };
+
+  // Handle month/year change for weekly view
+  useEffect(() => {
+    setSelectedWeek(1);
+  }, [selectedMonth, selectedYear]);
 
   return (
     <div className="student-attendance-container">
       <h1 className="attendance-title">Student Attendance</h1>
       <p className="attendance-subtitle">
-        {name} • {className} • {email}
+        {name || 'Loading...'} • {className || 'Loading...'} • {email || 'Loading...'}
       </p>
+      
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+          Loading attendance data...
+        </div>
+      )}
 
       {/* VIEW SWITCH */}
       <div className="view-selector">
@@ -371,13 +492,55 @@ const StudentAttendance = () => {
       {/* WEEKLY VIEW */}
       {selectedView === "weekly" && (
         <>
-          <h2 className="report-title">Weekly Overview</h2>
+          <div className="date-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+            <h2 className="report-title" style={{ margin: 0 }}>Weekly Overview</h2>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                onClick={() => {
+                  let m = selectedMonth - 1;
+                  let y = selectedYear;
+                  if (m < 0) {
+                    m = 11;
+                    y--;
+                  }
+                  setSelectedMonth(m);
+                  setSelectedYear(y);
+                }}
+                style={{ padding: '8px 15px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#fff' }}
+              >
+                ← Prev Month
+              </button>
+              <span style={{ padding: '8px 15px', fontWeight: '600' }}>
+                {new Date(selectedYear, selectedMonth).toLocaleString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <button
+                onClick={() => {
+                  let m = selectedMonth + 1;
+                  let y = selectedYear;
+                  if (m > 11) {
+                    m = 0;
+                    y++;
+                  }
+                  setSelectedMonth(m);
+                  setSelectedYear(y);
+                }}
+                style={{ padding: '8px 15px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#fff' }}
+              >
+                Next Month →
+              </button>
+            </div>
+          </div>
           <div className="weekly-grid">
             {weeklyStats.map((w) => (
               <div
                 key={w.week}
                 className="weekly-card"
                 onClick={() => setSelectedWeek(w.week)}
+                style={{ 
+                  cursor: 'pointer',
+                  border: selectedWeek === w.week ? '2px solid #2D5D7B' : '1px solid #ddd',
+                  backgroundColor: selectedWeek === w.week ? '#f0f7ff' : '#fff'
+                }}
               >
                 <div className="weekly-percent">{w.percent}%</div>
                 <h3>Week {w.week}</h3>
@@ -421,7 +584,44 @@ const StudentAttendance = () => {
       {/* MONTHLY VIEW */}
       {selectedView === "monthly" && (
         <>
-          <h2 className="report-title">Monthly Overview</h2>
+          <div className="date-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+            <h2 className="report-title" style={{ margin: 0 }}>Monthly Overview</h2>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                onClick={() => {
+                  let m = selectedMonth - 1;
+                  let y = selectedYear;
+                  if (m < 0) {
+                    m = 11;
+                    y--;
+                  }
+                  setSelectedMonth(m);
+                  setSelectedYear(y);
+                }}
+                style={{ padding: '8px 15px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#fff' }}
+              >
+                ← Prev Month
+              </button>
+              <span style={{ padding: '8px 15px', fontWeight: '600' }}>
+                {new Date(selectedYear, selectedMonth).toLocaleString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <button
+                onClick={() => {
+                  let m = selectedMonth + 1;
+                  let y = selectedYear;
+                  if (m > 11) {
+                    m = 0;
+                    y++;
+                  }
+                  setSelectedMonth(m);
+                  setSelectedYear(y);
+                }}
+                style={{ padding: '8px 15px', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#fff' }}
+              >
+                Next Month →
+              </button>
+            </div>
+          </div>
           <div className="weekly-grid">
             <div className="weekly-card">
               <div className="weekly-percent">{monthlyOverview.percent}%</div>
