@@ -765,6 +765,7 @@ import UserList from './modules/teacher/Userlist';
 import StudentDetails from './modules/teacher/Studentdetails';
 import ParentDetails from './modules/teacher/Parentdetails';
 import TeacherResults from './modules/teacher/Results';
+import StudentsReport from './modules/teacher/StudentReport';
 
 import './modules/parent/styles.css';
 
@@ -1120,6 +1121,15 @@ function App() {
                 <div style={{ marginLeft: '300px', padding: '20px' }}>
                   <TeacherResults />
                 </div>
+              </RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          {/* Teacher Student Report Route */}
+          <Route path="/teacher/student-report" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="teacher">
+                <StudentsReport />
               </RoleRoute>
             </ProtectedRoute>
           } />

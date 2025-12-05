@@ -518,6 +518,29 @@ CREATE TABLE careerperformance (
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- School Test Scores (Quarterly, Half-Yearly, Annual)
+-- Stores real school test scores entered by teachers manually
+CREATE TABLE school_test_scores (
+    score_id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    class_name VARCHAR(50) NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    quarterly_score FLOAT,
+    half_yearly_score FLOAT,
+    annual_score FLOAT,
+    overall_score FLOAT, -- Calculated: annual OR half_yearly OR quarterly
+    academic_year VARCHAR(20), -- e.g., "2024-2025"
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES student_registration(student_id) ON DELETE CASCADE,
+    CONSTRAINT uq_school_test_scores UNIQUE (student_id, class_name, subject, academic_year),
+    CONSTRAINT chk_scores_range CHECK (
+        (quarterly_score IS NULL OR (quarterly_score >= 0 AND quarterly_score <= 100)) AND
+        (half_yearly_score IS NULL OR (half_yearly_score >= 0 AND half_yearly_score <= 100)) AND
+        (annual_score IS NULL OR (annual_score >= 0 AND annual_score <= 100))
+    )
+);
+
 -- =====================================================
 -- REWARDS/COINS MODULE
 -- =====================================================

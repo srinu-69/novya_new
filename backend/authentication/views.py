@@ -2267,6 +2267,298 @@ def get_teacher_parents(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_student_school_scores(request):
+    """
+    Get school test scores (quarterly, half-yearly, annual) for students
+    Returns students with their school test scores
+    Uses the SAME logic as get_teacher_students to ensure consistency
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_student_school_scores called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration - use EXACT same logic as get_teacher_students
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+        except TeacherRegistration.DoesNotExist:
+            print(f"❌ Teacher registration not found for user: {user.username}")
+            return Response({
+                'error': 'Teacher registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get or create teacher profile - use EXACT same logic as get_teacher_students
+        try:
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+        except TeacherProfile.DoesNotExist:
+            # If profile doesn't exist, create it (same as get_teacher_students)
+            teacher_profile = TeacherProfile.objects.create(
+                teacher_id=teacher_reg.teacher_id,
+                teacher_username=teacher_reg.teacher_username,
+                teacher_name=f"{teacher_reg.first_name} {teacher_reg.last_name}",
+                email=teacher_reg.email,
+                phone_number=teacher_reg.phone_number,
+                school='',  # Will be empty if not set
+            )
+            teacher_school = teacher_profile.school
+        
+        # If teacher has no school set, return empty list (same as get_teacher_students)
+        if not teacher_school or not teacher_school.strip():
+            return Response({
+                'students': [],
+                'message': 'No school assigned to teacher. Please update your profile with school name.',
+                'teacher_school': None
+            }, status=status.HTTP_200_OK)
+        
+        # Get all student profiles that match the teacher's school - use EXACT same logic
+        teacher_school_trimmed = teacher_school.strip() if teacher_school else ''
+        matching_profiles = StudentProfile.objects.filter(
+            school__iexact=teacher_school_trimmed
+        ).exclude(school__isnull=True).exclude(school='')
+        
+        print(f"🏫 Teacher {user.username} is from school: '{teacher_school_trimmed}'")
+        print(f"📋 Found {matching_profiles.count()} student profiles matching school '{teacher_school_trimmed}'")
+        
+        # Get student IDs from matching profiles
+        student_ids = [profile.student_id for profile in matching_profiles]
+        
+        # Get student registrations for those IDs
+        students = StudentRegistration.objects.filter(student_id__in=student_ids)
+        print(f"📊 Found {students.count()} students from school '{teacher_school_trimmed}'")
+        
+        # Get current academic year (e.g., "2024-2025")
+        current_year = datetime.now().year
+        next_year = current_year + 1
+        academic_year = f"{current_year}-{next_year}"
+        
+        # Build response with school test scores
+        from django.db import connection
+        students_data = []
+        
+        for student in students:
+            # Get student basic info
+            try:
+                user_obj = User.objects.get(username=student.student_username)
+                first_name = user_obj.firstname
+                last_name = user_obj.lastname
+                email = user_obj.email
+            except User.DoesNotExist:
+                first_name = student.first_name
+                last_name = student.last_name
+                email = student.student_email or ''
+            
+            try:
+                profile = StudentProfile.objects.get(student_id=student.student_id)
+                class_name = profile.grade or 'Class 7'
+            except StudentProfile.DoesNotExist:
+                class_name = 'Class 7'
+            
+            # Get ALL school test scores from database for this student (simplified approach)
+            # We'll get all scores and use the most recent ones
+            with connection.cursor() as cursor:
+                # First, check what's in the database
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM school_test_scores
+                    WHERE student_id = %s
+                """, [student.student_id])
+                total_count = cursor.fetchone()[0]
+                print(f"🔍 Total score records in DB for student {student.student_id}: {total_count}")
+                
+                # Get all scores for this student, ordered by most recent
+                cursor.execute("""
+                    SELECT subject, quarterly_score, half_yearly_score, annual_score, overall_score, class_name, academic_year
+                    FROM school_test_scores
+                    WHERE student_id = %s
+                    ORDER BY updated_at DESC, academic_year DESC, subject
+                """, [student.student_id])
+                
+                all_rows = cursor.fetchall()
+                print(f"🔍 Found {len(all_rows)} total score records for student {student.student_id}")
+                
+                # If we have rows, use them (take the latest for each subject)
+                rows = []
+                seen_subjects = set()
+                for row in all_rows:
+                    subject_name = row[0]
+                    if subject_name and subject_name not in seen_subjects:
+                        rows.append(row)
+                        seen_subjects.add(subject_name)
+                        print(f"  📝 Added subject: {subject_name} (from class_name='{row[5]}', academic_year='{row[6]}')")
+                
+                print(f"🔍 After deduplication: {len(rows)} unique subjects for student {student.student_id}")
+                
+                print(f"📊 Found {len(rows)} score records for student {student.student_id} (class_name='{class_name}')")
+                
+                subjects = {}
+                for row in rows:
+                    subject_name, quarterly, half_yearly, annual, overall, db_class_name, db_academic_year = row
+                    print(f"  📝 Subject: {subject_name}, Q: {quarterly}, HY: {half_yearly}, AN: {annual}, Overall: {overall}")
+                    if subject_name:  # Only add if subject_name is not None/empty
+                        subjects[subject_name] = {
+                            'quarterly': float(quarterly) if quarterly is not None else 0,
+                            'halfYearly': float(half_yearly) if half_yearly is not None else 0,
+                            'annual': float(annual) if annual is not None else 0,
+                            'overall': float(overall) if overall is not None else 0
+                        }
+                
+                print(f"  📊 Subjects dict after processing: {subjects}")
+                print(f"  📊 Subjects count: {len(subjects)}")
+                
+                # Calculate overall score (average of all subjects' overall scores)
+                overall_scores = [s['overall'] for s in subjects.values() if s['overall'] > 0]
+                overall_score = round(sum(overall_scores) / len(overall_scores)) if overall_scores else 0
+                
+                print(f"  ✅ Calculated overall score: {overall_score}% (from {len(overall_scores)} subjects)")
+                
+                # Calculate change (placeholder for now, can be enhanced later)
+                change = 0.0
+            
+            student_data_item = {
+                'id': student.student_id,
+                'student_id': student.student_id,
+                'name': f"{first_name} {last_name}".strip() or 'Unknown',
+                'roll': f"T{student.student_id:03d}",
+                'className': class_name,
+                'score': overall_score,
+                'change': change,
+                'subjects': subjects
+            }
+            
+            print(f"  ✅ Student data item for {student.student_id}: subjects count = {len(subjects)}, score = {overall_score}")
+            print(f"  ✅ Subjects keys: {list(subjects.keys())}")
+            
+            students_data.append(student_data_item)
+        
+        print(f"📊 Returning {len(students_data)} students with school scores")
+        for student_item in students_data:
+            print(f"  📝 Student {student_item['id']}: {student_item['name']}, score={student_item['score']}, subjects={len(student_item['subjects'])}")
+            if student_item['subjects']:
+                print(f"    Subjects: {list(student_item['subjects'].keys())}")
+        
+        return Response({
+            'students': students_data,
+            'academic_year': academic_year,
+            'total_count': len(students_data),
+            'teacher_school': teacher_school_trimmed
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_student_school_scores: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get student school scores: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def save_student_school_scores(request):
+    """
+    Save or update school test scores for a student
+    """
+    try:
+        user = request.user
+        print(f"🔍 save_student_school_scores called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get request data
+        student_id = request.data.get('student_id')
+        class_name = request.data.get('class_name')
+        subjects = request.data.get('subjects', {})
+        academic_year = request.data.get('academic_year')
+        
+        if not student_id or not class_name:
+            return Response({
+                'error': 'student_id and class_name are required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get current academic year if not provided
+        if not academic_year:
+            current_year = datetime.now().year
+            next_year = current_year + 1
+            academic_year = f"{current_year}-{next_year}"
+        
+        # Verify student exists
+        try:
+            student = StudentRegistration.objects.get(student_id=student_id)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': f'Student with ID {student_id} not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Save scores to database
+        from django.db import connection
+        with connection.cursor() as cursor:
+            for subject_name, subject_data in subjects.items():
+                quarterly = subject_data.get('quarterly')
+                half_yearly = subject_data.get('halfYearly')
+                annual = subject_data.get('annual')
+                
+                # Calculate overall: annual OR half_yearly OR quarterly
+                overall = annual if annual else (half_yearly if half_yearly else quarterly)
+                
+                # Convert to float or None
+                quarterly = float(quarterly) if quarterly else None
+                half_yearly = float(half_yearly) if half_yearly else None
+                annual = float(annual) if annual else None
+                overall = float(overall) if overall else None
+                
+                # Insert or update using ON CONFLICT
+                cursor.execute("""
+                    INSERT INTO school_test_scores 
+                    (student_id, class_name, subject, quarterly_score, half_yearly_score, annual_score, overall_score, academic_year, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (student_id, class_name, subject, academic_year)
+                    DO UPDATE SET
+                        quarterly_score = EXCLUDED.quarterly_score,
+                        half_yearly_score = EXCLUDED.half_yearly_score,
+                        annual_score = EXCLUDED.annual_score,
+                        overall_score = EXCLUDED.overall_score,
+                        updated_at = CURRENT_TIMESTAMP
+                """, [student_id, class_name, subject_name, quarterly, half_yearly, annual, overall, academic_year])
+        
+        # Calculate new overall score
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT AVG(overall_score) 
+                FROM school_test_scores
+                WHERE student_id = %s AND class_name = %s AND academic_year = %s
+                AND overall_score IS NOT NULL AND overall_score > 0
+            """, [student_id, class_name, academic_year])
+            
+            row = cursor.fetchone()
+            new_overall_score = round(row[0]) if row and row[0] else 0
+        
+        return Response({
+            'message': 'School test scores saved successfully',
+            'student_id': student_id,
+            'overall_score': new_overall_score
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in save_student_school_scores: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to save school test scores: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def send_parent_message(request):

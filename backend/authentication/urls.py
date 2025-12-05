@@ -41,6 +41,8 @@ urlpatterns = [
     path('teacher-profile/update/', views.update_teacher_profile, name='update_teacher_profile'),
     path('teacher-students/', views.get_teacher_students, name='get_teacher_students'),
     path('teacher-parents/', views.get_teacher_parents, name='get_teacher_parents'),
+    path('student-school-scores/', views.get_student_school_scores, name='get_student_school_scores'),
+    path('save-school-scores/', views.save_student_school_scores, name='save_student_school_scores'),
     
     # Parent notification endpoints
     path('send-parent-message/', views.send_parent_message, name='send_parent_message'),
