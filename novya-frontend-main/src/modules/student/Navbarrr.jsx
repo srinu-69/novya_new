@@ -2844,6 +2844,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const [practiceDropdownOpen, setPracticeDropdownOpen] = useState(false);
+  const [careerDropdownOpen, setCareerDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [showNavbar, setShowNavbar] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -2852,7 +2853,8 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileDropdowns, setMobileDropdowns] = useState({
     learn: false,
-    practice: false
+    practice: false,
+    career: false
   });
   const [mobileLangDropdownOpen, setMobileLangDropdownOpen] = useState(false);
  
@@ -3444,7 +3446,8 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
     setMobileMenuOpen(false);
     setMobileDropdowns({
       learn: false,
-      practice: false
+      practice: false,
+      career: false
     });
     setMobileLangDropdownOpen(false);
   };
@@ -3759,6 +3762,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
     setAvatarOpen(false);
     setClassDropdownOpen(false);
     setPracticeDropdownOpen(false);
+    setCareerDropdownOpen(false);
     setLangDropdownOpen(false);
     setRewardsHistoryOpen(false);
 
@@ -3820,7 +3824,15 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
         { path: '/typing-master', name: t('typingMaster', 'Typing Master') },
       ],
     },
-    { path: '/career', name: t('career', 'Career') },
+    {
+      path: '/career',
+      name: t('career', 'Career'),
+      hasDropdown: true,
+      dropdownItems: [
+        { path: '/career', name: t('career', 'Career') },
+        { path: '/student-report', name: t('studentReport', 'Student Report') },
+      ],
+    },
     { path: '/study-room', name: t('studyRoom', 'Study Room') },
   ];
 
@@ -4521,11 +4533,13 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                 onMouseEnter={() => {
                   if (link.path === '/learn') setClassDropdownOpen(true);
                   if (link.path === '/practice') setPracticeDropdownOpen(true);
+                  if (link.path === '/career') setCareerDropdownOpen(true);
                 }}
                 onMouseLeave={() => {
                   setTimeout(() => {
                     if (link.path === '/learn') setClassDropdownOpen(false);
                     if (link.path === '/practice') setPracticeDropdownOpen(false);
+                    if (link.path === '/career') setCareerDropdownOpen(false);
                   }, 200);
                 }}
               >
@@ -4535,10 +4549,12 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     onMouseEnter={() => {
                       if (link.path === '/learn') setClassDropdownOpen(true);
                       if (link.path === '/practice') setPracticeDropdownOpen(true);
+                      if (link.path === '/career') setCareerDropdownOpen(true);
                     }}
                     onMouseLeave={() => {
                       if (link.path === '/learn') setClassDropdownOpen(false);
                       if (link.path === '/practice') setPracticeDropdownOpen(false);
+                      if (link.path === '/career') setCareerDropdownOpen(false);
                     }}
                   >
                     <span
@@ -4556,7 +4572,9 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     </span>
 
                     <AnimatePresence>
-                      {(link.path === '/learn' ? classDropdownOpen : practiceDropdownOpen) && (
+                      {((link.path === '/learn' && classDropdownOpen) || 
+                        (link.path === '/practice' && practiceDropdownOpen) ||
+                        (link.path === '/career' && careerDropdownOpen)) && (
                         <motion.div
                           className="nav-dropdown"
                           initial={{ opacity: 0, y: -10 }}
@@ -4565,10 +4583,12 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                           onMouseEnter={() => {
                             if (link.path === '/learn') setClassDropdownOpen(true);
                             if (link.path === '/practice') setPracticeDropdownOpen(true);
+                            if (link.path === '/career') setCareerDropdownOpen(true);
                           }}
                           onMouseLeave={() => {
                             if (link.path === '/learn') setClassDropdownOpen(false);
                             if (link.path === '/practice') setPracticeDropdownOpen(false);
+                            if (link.path === '/career') setCareerDropdownOpen(false);
                           }}
                         >
                           <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
@@ -5628,7 +5648,10 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                     {link.hasDropdown ? (
                       <>
                         <button
-                          onClick={() => toggleMobileDropdown(link.path === '/learn' ? 'learn' : 'practice')}
+                          onClick={() => {
+                            const dropdownKey = link.path === '/learn' ? 'learn' : link.path === '/practice' ? 'practice' : 'career';
+                            toggleMobileDropdown(dropdownKey);
+                          }}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -5644,10 +5667,10 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
                           }}
                         >
                           <span>{link.name}</span>
-                          <FaChevronDown size={12} style={{ transform: mobileDropdowns[link.path === '/learn' ? 'learn' : 'practice'] ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }} />
+                          <FaChevronDown size={12} style={{ transform: mobileDropdowns[link.path === '/learn' ? 'learn' : link.path === '/practice' ? 'practice' : 'career'] ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }} />
                         </button>
                         <AnimatePresence>
-                          {mobileDropdowns[link.path === '/learn' ? 'learn' : 'practice'] && (
+                          {mobileDropdowns[link.path === '/learn' ? 'learn' : link.path === '/practice' ? 'practice' : 'career'] && (
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}

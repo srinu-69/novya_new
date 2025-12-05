@@ -63,6 +63,10 @@ export const API_CONFIG = {
       TEACHER_STUDENTS: `${DJANGO_BASE_URL}/auth/teacher-students/`,
       TEACHER_PARENTS: `${DJANGO_BASE_URL}/auth/teacher-parents/`,
       STUDENT_SCHOOL_SCORES: `${DJANGO_BASE_URL}/auth/student-school-scores/`,
+      MY_SCHOOL_SCORES: `${DJANGO_BASE_URL}/auth/my-school-scores/`,
+      CHILD_SCHOOL_SCORES: `${DJANGO_BASE_URL}/auth/child-school-scores/`,
+      CHILD_ATTENDANCE: `${DJANGO_BASE_URL}/auth/child-attendance/`,
+      SEND_PARENT_FEEDBACK: `${DJANGO_BASE_URL}/auth/send-parent-feedback/`,
       SAVE_SCHOOL_SCORES: `${DJANGO_BASE_URL}/auth/save-school-scores/`,
       
       // Parent notification endpoints

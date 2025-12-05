@@ -7,6 +7,7 @@ import Progress from './Progress';
 import QuizReports from './QuizReports';
 import MockTestReports from './MockTestReports';
 import StudyPlanner from './StudyPlanner';
+import Reports from './Reports';
 import ContactUs from './ContactUs';
 import { Typewriter } from 'react-simple-typewriter';
 import {
@@ -25,7 +26,8 @@ import {
   HiOutlineAcademicCap,
   HiOutlineClipboardDocumentList,
   HiOutlineLightBulb,
-  HiOutlineHome
+  HiOutlineHome,
+  HiOutlineDocumentChartBar
 } from 'react-icons/hi2';
 import novyaLogo from '../home/assets/NOVYA LOGO.png';
 import { FaPhoneAlt } from 'react-icons/fa';
@@ -2561,6 +2563,12 @@ const ParentDashboard = () => {
       gradient: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
     },
     {
+      key: 'reports',
+      label: 'Reports',
+      icon: HiOutlineDocumentChartBar,
+      gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    },
+    {
       key: 'faq',
       label: t('sections.contact'),
       icon: FaPhoneAlt,
@@ -2654,6 +2662,7 @@ const ParentDashboard = () => {
       case 'homework': return <QuizReports />;
       case 'mockreports': return <MockTestReports />;
       case 'studyplanner': return <StudyPlanner />;
+      case 'reports': return <Reports />;
       case 'faq': return <ContactUs />;
       default:
         return (
@@ -2992,7 +3001,7 @@ const ParentDashboard = () => {
                   </div>
                 )}
               </div>
-             
+
               {/* Settings */}
               <div className="settings-container">
                 <button

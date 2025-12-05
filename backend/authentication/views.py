@@ -2559,6 +2559,529 @@ def save_student_school_scores(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_my_school_scores(request):
+    """
+    Get school test scores for the currently logged-in student
+    Returns the student's own school test scores from school_test_scores table
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_my_school_scores called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a student
+        if user.role != 'Student':
+            return Response({
+                'error': 'Access denied. Only student users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get student registration
+        try:
+            student_reg = StudentRegistration.objects.get(student_username=user.username)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student registration not found.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get student profile for class name
+        try:
+            profile = StudentProfile.objects.get(student_id=student_reg.student_id)
+            class_name = profile.grade or 'Class 7'
+        except StudentProfile.DoesNotExist:
+            class_name = 'Class 7'
+        
+        # Get student name
+        first_name = user.firstname or student_reg.first_name or ''
+        last_name = user.lastname or student_reg.last_name or ''
+        student_name = f"{first_name} {last_name}".strip() or 'Unknown'
+        
+        # Get current academic year
+        current_year = datetime.now().year
+        next_year = current_year + 1
+        academic_year = f"{current_year}-{next_year}"
+        
+        # Fetch all school test scores for this student
+        from django.db import connection
+        with connection.cursor() as cursor:
+            # Get all scores for this student, ordered by most recent
+            cursor.execute("""
+                SELECT subject, quarterly_score, half_yearly_score, annual_score, overall_score, 
+                       class_name, academic_year, updated_at
+                FROM school_test_scores
+                WHERE student_id = %s
+                ORDER BY updated_at DESC, academic_year DESC, subject
+            """, [student_reg.student_id])
+            
+            all_rows = cursor.fetchall()
+            print(f"🔍 Found {len(all_rows)} total score records for student {student_reg.student_id}")
+            
+            # Deduplicate by subject (get latest for each subject)
+            subjects = {}
+            seen_subjects = set()
+            for row in all_rows:
+                subject_name, quarterly, half_yearly, annual, overall, db_class_name, db_academic_year, updated_at = row
+                if subject_name and subject_name not in seen_subjects:
+                    subjects[subject_name] = {
+                        'quarterly': float(quarterly) if quarterly is not None else 0,
+                        'halfYearly': float(half_yearly) if half_yearly is not None else 0,
+                        'annual': float(annual) if annual is not None else 0,
+                        'overall': float(overall) if overall is not None else 0,
+                        'class_name': db_class_name or class_name,
+                        'academic_year': db_academic_year or academic_year,
+                        'updated_at': updated_at.isoformat() if updated_at else None
+                    }
+                    seen_subjects.add(subject_name)
+                    print(f"  📝 Added subject: {subject_name}, Q: {quarterly}, HY: {half_yearly}, AN: {annual}, Overall: {overall}")
+            
+            # Calculate overall score (average of all subjects' overall scores)
+            overall_scores = [s['overall'] for s in subjects.values() if s['overall'] > 0]
+            overall_score = round(sum(overall_scores) / len(overall_scores)) if overall_scores else 0
+            
+            print(f"  ✅ Calculated overall score: {overall_score}% (from {len(overall_scores)} subjects)")
+        
+        # Get attendance percentage (matching teacher portal calculation)
+        attendance_percentage = 0.0
+        try:
+            from progress.models import Attendance
+            attendance_records = Attendance.objects.filter(student_id=student_reg.student_id)
+            
+            if attendance_records.exists():
+                # Count all marked days (present, absent, late, excused)
+                total_marked_days = attendance_records.count()
+                present_days = attendance_records.filter(status='present').count()
+                
+                # Calculate attendance percentage: (present days) / (total marked days) * 100
+                # This matches the teacher portal calculation: presentDays / markedDays * 100
+                attendance_percentage = round((present_days / total_marked_days * 100), 1) if total_marked_days > 0 else 0.0
+                print(f"  📊 Attendance: {present_days}/{total_marked_days} = {attendance_percentage}%")
+        except Exception as att_error:
+            print(f"⚠️ Error fetching attendance: {att_error}")
+            import traceback
+            print(traceback.format_exc())
+            attendance_percentage = 0.0
+        
+        return Response({
+            'student_id': student_reg.student_id,
+            'student_name': student_name,
+            'class_name': class_name,
+            'overall_score': overall_score,
+            'subjects': subjects,
+            'academic_year': academic_year,
+            'total_subjects': len(subjects),
+            'attendance_percentage': attendance_percentage
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_my_school_scores: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get school scores: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_child_school_scores_for_parent(request):
+    """
+    Get school test scores and attendance for parent's linked child
+    Returns the child's school test scores from school_test_scores table and attendance
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_child_school_scores_for_parent called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get child email from query params (passed from frontend)
+        child_email = request.query_params.get('child_email')
+        if not child_email:
+            return Response({
+                'error': 'child_email parameter is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get student registration by email
+        try:
+            student_reg = StudentRegistration.objects.get(student_email__iexact=child_email)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found for the provided child email.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify parent-child relationship
+        if student_reg.parent_email.lower() != user.email.lower():
+            return Response({
+                'error': 'Access denied. This student is not linked to your parent account.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get student profile for class name
+        try:
+            profile = StudentProfile.objects.get(student_id=student_reg.student_id)
+            class_name = profile.grade or 'Class 7'
+        except StudentProfile.DoesNotExist:
+            class_name = 'Class 7'
+        
+        # Get student name
+        first_name = student_reg.first_name or ''
+        last_name = student_reg.last_name or ''
+        student_name = f"{first_name} {last_name}".strip() or 'Unknown'
+        
+        # Get current academic year
+        current_year = datetime.now().year
+        next_year = current_year + 1
+        academic_year = f"{current_year}-{next_year}"
+        
+        # Fetch all school test scores for this student
+        from django.db import connection
+        with connection.cursor() as cursor:
+            # Get all scores for this student, ordered by most recent
+            cursor.execute("""
+                SELECT subject, quarterly_score, half_yearly_score, annual_score, overall_score, 
+                       class_name, academic_year, updated_at
+                FROM school_test_scores
+                WHERE student_id = %s
+                ORDER BY updated_at DESC, academic_year DESC, subject
+            """, [student_reg.student_id])
+            
+            all_rows = cursor.fetchall()
+            print(f"🔍 Found {len(all_rows)} total score records for student {student_reg.student_id}")
+            
+            # Deduplicate by subject (get latest for each subject)
+            subjects = {}
+            seen_subjects = set()
+            for row in all_rows:
+                subject_name, quarterly, half_yearly, annual, overall, db_class_name, db_academic_year, updated_at = row
+                if subject_name and subject_name not in seen_subjects:
+                    subjects[subject_name] = {
+                        'quarterly': float(quarterly) if quarterly is not None else 0,
+                        'halfYearly': float(half_yearly) if half_yearly is not None else 0,
+                        'annual': float(annual) if annual is not None else 0,
+                        'overall': float(overall) if overall is not None else 0,
+                        'class_name': db_class_name or class_name,
+                        'academic_year': db_academic_year or academic_year,
+                        'updated_at': updated_at.isoformat() if updated_at else None
+                    }
+                    seen_subjects.add(subject_name)
+                    print(f"  📝 Added subject: {subject_name}, Q: {quarterly}, HY: {half_yearly}, AN: {annual}, Overall: {overall}")
+            
+            # Calculate overall score (average of all subjects' overall scores)
+            overall_scores = [s['overall'] for s in subjects.values() if s['overall'] > 0]
+            overall_score = round(sum(overall_scores) / len(overall_scores)) if overall_scores else 0
+            
+            print(f"  ✅ Calculated overall score: {overall_score}% (from {len(overall_scores)} subjects)")
+        
+        # Get attendance percentage (matching teacher portal calculation)
+        attendance_percentage = 0.0
+        try:
+            from progress.models import Attendance
+            attendance_records = Attendance.objects.filter(student_id=student_reg.student_id)
+            
+            if attendance_records.exists():
+                # Count all marked days (present, absent, late, excused)
+                total_marked_days = attendance_records.count()
+                present_days = attendance_records.filter(status='present').count()
+                
+                # Calculate attendance percentage: (present days) / (total marked days) * 100
+                attendance_percentage = round((present_days / total_marked_days * 100), 1) if total_marked_days > 0 else 0.0
+                print(f"  📊 Attendance: {present_days}/{total_marked_days} = {attendance_percentage}%")
+        except Exception as att_error:
+            print(f"⚠️ Error fetching attendance: {att_error}")
+            import traceback
+            print(traceback.format_exc())
+            attendance_percentage = 0.0
+        
+        return Response({
+            'student_id': student_reg.student_id,
+            'student_name': student_name,
+            'class_name': class_name,
+            'overall_score': overall_score,
+            'subjects': subjects,
+            'academic_year': academic_year,
+            'total_subjects': len(subjects),
+            'attendance_percentage': attendance_percentage
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_child_school_scores_for_parent: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get child school scores: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_child_attendance_for_parent(request):
+    """
+    Get attendance records for parent's linked child
+    Returns attendance data marked by teachers
+    """
+    try:
+        user = request.user
+        print(f"🔍 get_child_attendance_for_parent called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get child email from query params (passed from frontend)
+        child_email = request.query_params.get('child_email')
+        if not child_email:
+            return Response({
+                'error': 'child_email parameter is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get student registration by email
+        try:
+            student_reg = StudentRegistration.objects.get(student_email__iexact=child_email)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found for the provided child email.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify parent-child relationship
+        if student_reg.parent_email.lower() != user.email.lower():
+            return Response({
+                'error': 'Access denied. This student is not linked to your parent account.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get optional date range filters
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        
+        # Import Attendance model
+        from progress.models import Attendance
+        from django.db import connection
+        
+        # Fetch attendance records for this student using direct database query
+        # Use raw SQL to ensure we query the attendance table correctly
+        student_id = student_reg.student_id
+        print(f"🔍 Fetching attendance for student_id: {student_id}")
+        
+        # Build SQL query
+        sql_query = """
+            SELECT date, status, check_in_time, check_out_time, hours_attended, remarks
+            FROM attendance
+            WHERE student_id = %s
+        """
+        params = [student_id]
+        
+        if date_from:
+            sql_query += " AND date >= %s"
+            params.append(date_from)
+        if date_to:
+            sql_query += " AND date <= %s"
+            params.append(date_to)
+        
+        sql_query += " ORDER BY date DESC"
+        
+        # Execute raw SQL query
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query, params)
+            rows = cursor.fetchall()
+            print(f"🔍 Found {len(rows)} attendance records for student {student_id}")
+            
+            # Format attendance data from raw SQL results
+            attendance_data = []
+            for row in rows:
+                date, attendance_status, check_in_time, check_out_time, hours_attended, remarks = row
+                
+                # Determine if it's a leave/absent day
+                is_leave = attendance_status in ['absent', 'excused']
+                
+                # Format check-in and check-out times
+                check_in = check_in_time.strftime('%H:%M') if check_in_time else None
+                check_out = check_out_time.strftime('%H:%M') if check_out_time else None
+                
+                # Get hours attended
+                hours = float(hours_attended) if hours_attended else 0
+                
+                # Determine status text
+                status_text = 'Leave' if is_leave else ('Normal' if hours >= 2 else 'Short')
+                
+                attendance_data.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'checkIn': check_in or '-',
+                    'checkOut': check_out or '-',
+                    'hours': hours if not is_leave else 0,
+                    'status': attendance_status,  # 'present', 'absent', 'late', 'excused'
+                    'statusText': status_text,  # 'Normal', 'Short', 'Leave'
+                    'leave': is_leave,
+                    'remarks': remarks or ''
+                })
+        
+        # Also try using ORM as fallback/verification (using ForeignKey relationship)
+        try:
+            # Use the ForeignKey relationship: student points to StudentRegistration
+            attendance_query = Attendance.objects.filter(student=student_reg)
+            if date_from:
+                attendance_query = attendance_query.filter(date__gte=date_from)
+            if date_to:
+                attendance_query = attendance_query.filter(date__lte=date_to)
+            attendance_records_orm = attendance_query.order_by('-date')
+            print(f"🔍 ORM query (using student FK) found {attendance_records_orm.count()} records")
+            
+            # If ORM found records and we have fewer from raw SQL, use ORM data
+            if attendance_records_orm.count() > 0 and attendance_records_orm.count() >= len(attendance_data):
+                print(f"✅ Using ORM data ({attendance_records_orm.count()} records)")
+                attendance_data = []
+                for record in attendance_records_orm:
+                    is_leave = record.status in ['absent', 'excused']
+                    check_in = record.check_in_time.strftime('%H:%M') if record.check_in_time else None
+                    check_out = record.check_out_time.strftime('%H:%M') if record.check_out_time else None
+                    hours = float(record.hours_attended) if record.hours_attended else 0
+                    status_text = 'Leave' if is_leave else ('Normal' if hours >= 2 else 'Short')
+                    
+                    attendance_data.append({
+                        'date': record.date.strftime('%Y-%m-%d'),
+                        'checkIn': check_in or '-',
+                        'checkOut': check_out or '-',
+                        'hours': hours if not is_leave else 0,
+                        'status': record.status,
+                        'statusText': status_text,
+                        'leave': is_leave,
+                        'remarks': record.remarks or ''
+                    })
+            else:
+                print(f"✅ Using raw SQL data ({len(attendance_data)} records)")
+        except Exception as orm_error:
+            print(f"⚠️ ORM query failed, using raw SQL results: {orm_error}")
+            import traceback
+            print(traceback.format_exc())
+        
+        # Calculate statistics
+        total_days = len(attendance_data)
+        present_days = len([a for a in attendance_data if a['status'] == 'present'])
+        leave_days = len([a for a in attendance_data if a['leave']])
+        total_hours = sum([a['hours'] for a in attendance_data])
+        
+        # Calculate attendance percentage (present days / total marked days)
+        attendance_percentage = (present_days / total_days * 100) if total_days > 0 else 0
+        
+        print(f"📊 Statistics calculated: total_days={total_days}, present_days={present_days}, leave_days={leave_days}, total_hours={total_hours}, attendance_percentage={attendance_percentage}")
+        print(f"📊 Returning {len(attendance_data)} attendance records")
+        
+        response_data = {
+            'attendance_records': attendance_data,
+            'statistics': {
+                'totalDays': total_days,
+                'presentDays': present_days,
+                'leaveDays': leave_days,
+                'totalHours': round(total_hours, 1),
+                'attendancePercentage': round(attendance_percentage, 1)
+            },
+            'student_name': f"{student_reg.first_name} {student_reg.last_name}".strip(),
+            'student_id': student_reg.student_id
+        }
+        
+        print(f"✅ Response data structure: {list(response_data.keys())}")
+        print(f"✅ Number of attendance records: {len(response_data['attendance_records'])}")
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_child_attendance_for_parent: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get child attendance: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def send_parent_feedback_to_student(request):
+    """
+    Parent sends feedback/notification to their linked child (student)
+    Creates a notification in student_notifications table
+    """
+    try:
+        user = request.user
+        print(f"🔍 send_parent_feedback_to_student called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can send feedback to students.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get child email and feedback message
+        child_email = request.data.get('child_email')
+        feedback_message = request.data.get('message', '').strip()
+        feedback_title = request.data.get('title', 'Feedback from Parent')
+        
+        if not child_email:
+            return Response({
+                'error': 'child_email is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not feedback_message:
+            return Response({
+                'error': 'Feedback message is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get student registration by email
+        try:
+            student_reg = StudentRegistration.objects.get(student_email__iexact=child_email)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found for the provided child email.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify parent-child relationship
+        if student_reg.parent_email.lower() != user.email.lower():
+            return Response({
+                'error': 'Access denied. This student is not linked to your parent account.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Create notification in student_notifications table
+        try:
+            from notifications.models import StudentNotification
+            from django.utils import timezone
+            
+            notification = StudentNotification.objects.create(
+                student_id=student_reg.student_id,
+                teacher_id=None,  # Parent feedback, not from teacher
+                notification_type='other',  # Parent feedback type
+                title=feedback_title,
+                message=feedback_message,
+                plan_id=None,
+                is_read=False,
+                created_at=timezone.now()
+            )
+            
+            print(f"✅ Created notification for student {student_reg.student_id}: {notification.notification_id}")
+            
+            return Response({
+                'message': 'Feedback sent successfully to student',
+                'notification_id': notification.notification_id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as notif_error:
+            print(f"❌ Error creating notification: {notif_error}")
+            import traceback
+            print(traceback.format_exc())
+            return Response({
+                'error': f'Failed to send notification: {str(notif_error)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in send_parent_feedback_to_student: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to send feedback: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def send_parent_message(request):

@@ -471,6 +471,7 @@ import React, { useState, useEffect } from "react";
 import { Container, Row, Col, Card, Table, Badge, Button } from "react-bootstrap";
 import { useTranslation } from "react-i18next"; // Import i18n translation hook
 import '../../i18n'; // Correct import path to your i18n.js
+import { API_CONFIG, djangoAPI, getChildEmailForParent } from "../../config/api";
  
 // Theme colors
 const themeColors = {
@@ -496,37 +497,7 @@ const calculateHours = (checkIn, checkOut) => {
   return Math.max(0, end - start);
 };
  
-// Daily sessions data
-const dailySessions = [
-  { date: "2025-08-15", checkIn: "09:00", checkOut: "17:00", leave: false },
-  { date: "2025-08-16", checkIn: "10:00", checkOut: "11:30", leave: false },
-  { date: "2025-08-17", leave: true },
-  { date: "2025-08-18", checkIn: "09:15", checkOut: "13:15", leave: false },
-  { date: "2025-08-19", checkIn: "10:30", checkOut: "11:00", leave: false },
-  { date: "2025-08-20", checkIn: "09:00", checkOut: "15:00", leave: false },
-  { date: "2025-08-21", leave: true },
-  { date: "2025-08-22", checkIn: "08:45", checkOut: "14:00", leave: false },
-  { date: "2025-08-23", checkIn: "09:30", checkOut: "11:00", leave: false },
-  { date: "2025-08-24", leave: true },
-  { date: "2025-08-25", checkIn: "09:00", checkOut: "17:00", leave: false },
-  { date: "2025-08-26", checkIn: "10:00", checkOut: "11:30", leave: false },
-  { date: "2025-08-27", leave: true },
-  { date: "2025-08-28", checkIn: "09:15", checkOut: "13:15", leave: false },
-  { date: "2025-08-29", checkIn: "10:30", checkOut: "11:00", leave: false },
-];
- 
-// Compute stats
-const totalHours = dailySessions.reduce(
-  (sum, s) => sum + (s.leave ? 0 : calculateHours(s.checkIn, s.checkOut)),
-  0
-);
- 
-const stats = {
-  totalDays: dailySessions.length,
-  presentDays: dailySessions.filter((s) => !s.leave).length,
-  leaveDays: dailySessions.filter((s) => s.leave).length,
-  totalHours: totalHours,
-};
+// Daily sessions data - will be fetched from API
  
 // Weekly data
 const getWeeklyData = (sessions) => {
@@ -548,21 +519,161 @@ const Attendance = () => {
   const { t } = useTranslation(); // Translation hook
   const [view, setView] = useState("daily");
   const [attendancePercent, setAttendancePercent] = useState(0);
- 
+  const [dailySessions, setDailySessions] = useState([]);
+  const [stats, setStats] = useState({
+    totalDays: 0,
+    presentDays: 0,
+    leaveDays: 0,
+    totalHours: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Fetch attendance data
   useEffect(() => {
-    const percent = (stats.presentDays / stats.totalDays) * 100;
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 1;
-      if (progress >= percent) {
-        progress = percent;
-        clearInterval(interval);
+    const fetchAttendanceData = async () => {
+      try {
+        setLoading(true);
+        let childEmail = getChildEmailForParent();
+        
+        // If child email not in localStorage, try to get it from backend
+        if (!childEmail) {
+          console.log("⚠️ Child email not in localStorage, fetching from backend...");
+          try {
+            const profileResponse = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.CHILD_PROFILE);
+            if (profileResponse && profileResponse.student_email) {
+              childEmail = profileResponse.student_email;
+              console.log("✅ Got child email from backend:", childEmail);
+            }
+          } catch (profileError) {
+            console.error("❌ Error fetching child profile:", profileError);
+          }
+        }
+        
+        if (!childEmail) {
+          console.error("❌ Child email not found in localStorage or backend");
+          setLoading(false);
+          return;
+        }
+
+        console.log("📤 Fetching attendance for child:", childEmail);
+        const url = `${API_CONFIG.DJANGO.AUTH.CHILD_ATTENDANCE}?child_email=${encodeURIComponent(childEmail)}`;
+        console.log("📤 API URL:", url);
+        const response = await djangoAPI.get(url);
+
+        console.log("✅ Attendance API response:", response);
+        console.log("✅ Response keys:", Object.keys(response || {}));
+
+        if (response) {
+          // Check for error in response
+          if (response.error) {
+            console.error("❌ API returned error:", response.error);
+            setDailySessions([]);
+            setStats({
+              totalDays: 0,
+              presentDays: 0,
+              leaveDays: 0,
+              totalHours: 0,
+            });
+            return;
+          }
+
+          // Check if we have attendance_records
+          if (response.attendance_records && Array.isArray(response.attendance_records)) {
+            console.log(`✅ Found ${response.attendance_records.length} attendance records`);
+            
+            // Transform API data to match component format
+            const sessions = response.attendance_records.map(record => ({
+              date: record.date,
+              checkIn: record.checkIn || '-',
+              checkOut: record.checkOut || '-',
+              hours: record.hours || 0,
+              leave: record.leave || false,
+              status: record.status,
+              statusText: record.statusText,
+            }));
+
+            setDailySessions(sessions);
+            
+            // Update stats from API response
+            if (response.statistics) {
+              setStats({
+                totalDays: response.statistics.totalDays || 0,
+                presentDays: response.statistics.presentDays || 0,
+                leaveDays: response.statistics.leaveDays || 0,
+                totalHours: response.statistics.totalHours || 0,
+              });
+            } else {
+              // Calculate stats from records if not provided
+              const totalDays = sessions.length;
+              const presentDays = sessions.filter(s => s.status === 'present').length;
+              const leaveDays = sessions.filter(s => s.leave).length;
+              const totalHours = sessions.reduce((sum, s) => sum + (s.hours || 0), 0);
+              
+              setStats({
+                totalDays,
+                presentDays,
+                leaveDays,
+                totalHours: Math.round(totalHours * 10) / 10,
+              });
+            }
+          } else {
+            console.log("⚠️ No attendance_records in response, setting empty data");
+            setDailySessions([]);
+            setStats({
+              totalDays: 0,
+              presentDays: 0,
+              leaveDays: 0,
+              totalHours: 0,
+            });
+          }
+        } else {
+          console.error("❌ Empty response from API");
+          setDailySessions([]);
+          setStats({
+            totalDays: 0,
+            presentDays: 0,
+            leaveDays: 0,
+            totalHours: 0,
+          });
+        }
+      } catch (error) {
+        console.error("❌ Error fetching attendance:", error);
+        console.error("❌ Error details:", error.response?.data || error.message);
+        // Set empty data on error
+        setDailySessions([]);
+        setStats({
+          totalDays: 0,
+          presentDays: 0,
+          leaveDays: 0,
+          totalHours: 0,
+        });
+      } finally {
+        setLoading(false);
       }
-      setAttendancePercent(progress);
-    }, 15);
-    return () => clearInterval(interval);
+    };
+
+    fetchAttendanceData();
   }, []);
- 
+
+  // Update attendance percentage when stats change
+  useEffect(() => {
+    if (stats.totalDays > 0) {
+      const percent = (stats.presentDays / stats.totalDays) * 100;
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 1;
+        if (progress >= percent) {
+          progress = percent;
+          clearInterval(interval);
+        }
+        setAttendancePercent(progress);
+      }, 15);
+      return () => clearInterval(interval);
+    } else {
+      setAttendancePercent(0);
+    }
+  }, [stats]);
+
   const weeklyData = getWeeklyData(dailySessions);
  
   return (
@@ -670,33 +781,47 @@ const Attendance = () => {
               </tr>
             </thead>
             <tbody>
-              {dailySessions.map((s, idx) => {
-                const hours = s.leave ? 0 : calculateHours(s.checkIn, s.checkOut);
-                let badgeVariant = "secondary";
-                let statusText = t("short");
- 
-                if (s.leave) {
-                  badgeVariant = "danger";
-                  statusText = t("leave");
-                } else if (hours >= shortHoursThreshold) {
-                  badgeVariant = "success";
-                  statusText = t("normal");
-                }
- 
-                return (
-                  <tr key={idx}>
-                    <td>{s.date}</td>
-                    <td>{s.leave ? "-" : s.checkIn}</td>
-                    <td>{s.leave ? "-" : s.checkOut}</td>
-                    <td>{s.leave ? "-" : hours.toFixed(1)}</td>
-                    <td>
-                      <Badge bg={badgeVariant} style={{ color: "white" }}>
-                        {statusText}
-                      </Badge>
-                    </td>
-                  </tr>
-                );
-              })}
+              {loading ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
+                    {t("loading") || "Loading..."}
+                  </td>
+                </tr>
+              ) : dailySessions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "20px" }}>
+                    {t("no_attendance_data") || "No attendance data available"}
+                  </td>
+                </tr>
+              ) : (
+                dailySessions.map((s, idx) => {
+                  const hours = s.leave ? 0 : (s.hours || calculateHours(s.checkIn, s.checkOut));
+                  let badgeVariant = "secondary";
+                  let statusText = t("short");
+
+                  if (s.leave) {
+                    badgeVariant = "danger";
+                    statusText = t("leave");
+                  } else if (hours >= shortHoursThreshold) {
+                    badgeVariant = "success";
+                    statusText = t("normal");
+                  }
+
+                  return (
+                    <tr key={idx}>
+                      <td>{s.date}</td>
+                      <td>{s.leave || s.checkIn === '-' ? "-" : s.checkIn}</td>
+                      <td>{s.leave || s.checkOut === '-' ? "-" : s.checkOut}</td>
+                      <td>{s.leave ? "-" : hours.toFixed(1)}</td>
+                      <td>
+                        <Badge bg={badgeVariant} style={{ color: "white" }}>
+                          {statusText}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </Table>
         </>

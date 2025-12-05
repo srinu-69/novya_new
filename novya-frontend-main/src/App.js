@@ -722,6 +722,7 @@ import Learn from './modules/student/Learn';
 import LessonPage from './modules/student/LessonPage';
 import Practice from './modules/student/Practice';
 import Career from './modules/student/Career';
+import StudentReportPage from './modules/student/StudentReport';
 import Chatbox from './modules/student/Chatbox';
 import Quizzes from './modules/student/Quizzes';
 import Recordings from './modules/student/Recordings';
@@ -801,6 +802,7 @@ function App() {
     '/learn',
     '/practice',
     '/career',
+    '/student-report',
     '/study-room',
     '/student/dashboard',
     '/lesson',
@@ -1017,6 +1019,11 @@ function App() {
           <Route path="/career" element={
             <ProtectedRoute>
               <RoleRoute requiredRole="student"><Career /></RoleRoute>
+            </ProtectedRoute>
+          } />
+          <Route path="/student-report" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="student"><StudentReportPage /></RoleRoute>
             </ProtectedRoute>
           } />
           <Route path="/study-room" element={
