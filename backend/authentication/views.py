@@ -1642,27 +1642,35 @@ def get_students(request):
     """
     user = request.user
     
-    # If user is a teacher, filter by school
+    # If user is a teacher, filter by school and grade
     if user.role == 'Teacher':
         try:
             teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
             teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
             
-            if teacher_school and teacher_school.strip():
-                # Get student profiles that match the teacher's school (case-insensitive)
+            if teacher_school and teacher_school.strip() and teacher_grade and teacher_grade.strip():
+                # Get student profiles that match the teacher's school AND grade (case-insensitive)
                 teacher_school_trimmed = teacher_school.strip()
+                teacher_grade_trimmed = teacher_grade.strip()
                 matching_profiles = StudentProfile.objects.filter(
-                    school__iexact=teacher_school_trimmed
-                ).exclude(school__isnull=True).exclude(school='')
+                    school__iexact=teacher_school_trimmed,
+                    grade__iexact=teacher_grade_trimmed
+                ).exclude(school__isnull=True).exclude(school='').exclude(grade__isnull=True).exclude(grade='')
                 
                 student_ids = [profile.student_id for profile in matching_profiles]
                 students = StudentRegistration.objects.filter(student_id__in=student_ids)
-                print(f"🏫 Teacher {user.username} - Filtered {students.count()} students from school '{teacher_school_trimmed}'")
+                print(f"🏫 Teacher {user.username} - Filtered {students.count()} students from school '{teacher_school_trimmed}' and grade '{teacher_grade_trimmed}'")
             else:
-                # Teacher has no school, return empty list
+                # Teacher has no school or grade, return empty list
                 students = StudentRegistration.objects.none()
-                print(f"⚠️ Teacher {user.username} has no school assigned")
+                missing = []
+                if not teacher_school or not teacher_school.strip():
+                    missing.append('school')
+                if not teacher_grade or not teacher_grade.strip():
+                    missing.append('grade')
+                print(f"⚠️ Teacher {user.username} missing: {', '.join(missing)}")
         except (TeacherRegistration.DoesNotExist, TeacherProfile.DoesNotExist):
             # Teacher profile not found, return empty list
             students = StudentRegistration.objects.none()
@@ -1703,6 +1711,7 @@ def get_teacher_students(request):
         try:
             teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
         except TeacherProfile.DoesNotExist:
             # If profile doesn't exist, create it
             teacher_profile = TeacherProfile.objects.create(
@@ -1712,33 +1721,74 @@ def get_teacher_students(request):
                 email=teacher_reg.email,
                 phone_number=teacher_reg.phone_number,
                 school='',  # Will be empty if not set
+                grade='',  # Will be empty if not set
             )
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
         
-        # If teacher has no school set, return empty list
-        if not teacher_school or not teacher_school.strip():
+        # If teacher has no school or grade set, return empty list
+        if not teacher_school or not teacher_school.strip() or not teacher_grade or not teacher_grade.strip():
+            missing = []
+            if not teacher_school or not teacher_school.strip():
+                missing.append('school')
+            if not teacher_grade or not teacher_grade.strip():
+                missing.append('grade')
             return Response({
                 'students': [],
-                'message': 'No school assigned to teacher. Please update your profile with school name.',
-                'teacher_school': None
+                'message': f'Teacher profile incomplete. Please update your profile with {", ".join(missing)}.',
+                'teacher_school': teacher_school,
+                'teacher_grade': teacher_grade
             }, status=status.HTTP_200_OK)
         
-        # Get all student profiles that match the teacher's school (case-insensitive, trimmed)
-        # Use __iexact for case-insensitive matching and handle whitespace
+        # Get all student profiles that match the teacher's school AND grade
+        # Use manual filtering to ensure exact matching
         teacher_school_trimmed = teacher_school.strip() if teacher_school else ''
-        matching_profiles = StudentProfile.objects.filter(
+        teacher_grade_trimmed = teacher_grade.strip() if teacher_grade else ''
+        
+        print(f"🔍 DEBUG: Teacher {user.username} filtering by school='{teacher_school_trimmed}', grade='{teacher_grade_trimmed}'")
+        
+        # First get all students with matching school
+        all_school_profiles = StudentProfile.objects.filter(
             school__iexact=teacher_school_trimmed
         ).exclude(school__isnull=True).exclude(school='')
         
-        print(f"🏫 Teacher {user.username} is from school: '{teacher_school_trimmed}'")
-        print(f"📋 Found {matching_profiles.count()} student profiles matching school '{teacher_school_trimmed}'")
+        print(f"🔍 DEBUG: Found {all_school_profiles.count()} students with school '{teacher_school_trimmed}'")
+        
+        # Helper function to normalize grade for comparison
+        def normalize_grade_for_match(grade_str):
+            """Normalize grade string for comparison - handles variations like '10th', '10', 'Class 10'"""
+            if not grade_str:
+                return ''
+            normalized = grade_str.strip().lower()
+            normalized = normalized.replace('class', '').replace('grade', '').replace('th', '').replace('st', '').replace('nd', '').replace('rd', '')
+            normalized = ' '.join(normalized.split())
+            return normalized
+        
+        teacher_grade_normalized = normalize_grade_for_match(teacher_grade_trimmed)
+        
+        # Then manually filter by grade for exact matching
+        matching_profiles = []
+        for profile in all_school_profiles:
+            profile_grade = (profile.grade or '').strip()
+            profile_grade_normalized = normalize_grade_for_match(profile_grade)
+            
+            # Try exact match first, then normalized match
+            if profile_grade and (profile_grade.lower() == teacher_grade_trimmed.lower() or 
+                                  (profile_grade_normalized and teacher_grade_normalized and 
+                                   profile_grade_normalized == teacher_grade_normalized)):
+                matching_profiles.append(profile)
+                print(f"   ✅ Match: Student ID {profile.student_id} - school='{profile.school}', grade='{profile.grade}'")
+            else:
+                print(f"   ❌ No match: Student ID {profile.student_id} - school='{profile.school}', grade='{profile.grade}' (norm: '{profile_grade_normalized}' vs teacher norm: '{teacher_grade_normalized}')")
+        
+        print(f"📋 Found {len(matching_profiles)} student profiles matching school '{teacher_school_trimmed}' AND grade '{teacher_grade_trimmed}'")
         
         # Get student IDs from matching profiles
         student_ids = [profile.student_id for profile in matching_profiles]
         
         # Get student registrations for those IDs
         students = StudentRegistration.objects.filter(student_id__in=student_ids)
-        print(f"📊 Found {students.count()} students from school '{teacher_school_trimmed}'")
+        print(f"📊 Found {students.count()} students from school '{teacher_school_trimmed}' and grade '{teacher_grade_trimmed}'")
         
         # Serialize the data and add profile information
         students_data = []
@@ -2060,30 +2110,36 @@ def get_teacher_parents(request):
                 'error': 'Teacher registration not found.'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Get teacher profile to get school
+        # Get teacher profile to get school and grade
         teacher_school = None
+        teacher_grade = None
         try:
             teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
             # Clean the school name (strip whitespace, handle empty strings)
             if teacher_school:
                 teacher_school = teacher_school.strip()
-            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}'")
+            # Clean the grade (strip whitespace, handle empty strings)
+            if teacher_grade:
+                teacher_grade = teacher_grade.strip()
+            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}', grade: '{teacher_grade}'")
         except TeacherProfile.DoesNotExist:
             print(f"⚠️ Teacher profile not found for teacher_id: {teacher_reg.teacher_id}")
             return Response({
                 'error': 'Teacher profile not found. Please complete your teacher profile setup.'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Filter students by school if teacher has a school
-        if teacher_school and teacher_school != '':
-            # Get student IDs from StudentProfile that match the teacher's school (case-insensitive, trimmed)
+        # Filter students by school and grade if teacher has both
+        if teacher_school and teacher_school != '' and teacher_grade and teacher_grade != '':
+            # Get student IDs from StudentProfile that match the teacher's school AND grade (case-insensitive, trimmed)
             student_profiles = StudentProfile.objects.filter(
-                school__iexact=teacher_school
-            ).exclude(school__isnull=True).exclude(school='')
+                school__iexact=teacher_school,
+                grade__iexact=teacher_grade
+            ).exclude(school__isnull=True).exclude(school='').exclude(grade__isnull=True).exclude(grade='')
             
             student_ids = [profile.student_id for profile in student_profiles]
-            print(f"📋 Found {len(student_ids)} student profiles matching school '{teacher_school}'")
+            print(f"📋 Found {len(student_ids)} student profiles matching school '{teacher_school}' and grade '{teacher_grade}'")
             
             if student_ids:
                 # Get students from StudentRegistration
@@ -2298,6 +2354,7 @@ def get_student_school_scores(request):
         try:
             teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
         except TeacherProfile.DoesNotExist:
             # If profile doesn't exist, create it (same as get_teacher_students)
             teacher_profile = TeacherProfile.objects.create(
@@ -2307,25 +2364,35 @@ def get_student_school_scores(request):
                 email=teacher_reg.email,
                 phone_number=teacher_reg.phone_number,
                 school='',  # Will be empty if not set
+                grade='',  # Will be empty if not set
             )
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
         
-        # If teacher has no school set, return empty list (same as get_teacher_students)
-        if not teacher_school or not teacher_school.strip():
+        # If teacher has no school or grade set, return empty list (same as get_teacher_students)
+        if not teacher_school or not teacher_school.strip() or not teacher_grade or not teacher_grade.strip():
+            missing = []
+            if not teacher_school or not teacher_school.strip():
+                missing.append('school')
+            if not teacher_grade or not teacher_grade.strip():
+                missing.append('grade')
             return Response({
                 'students': [],
-                'message': 'No school assigned to teacher. Please update your profile with school name.',
-                'teacher_school': None
+                'message': f'Teacher profile incomplete. Please update your profile with {", ".join(missing)}.',
+                'teacher_school': teacher_school,
+                'teacher_grade': teacher_grade
             }, status=status.HTTP_200_OK)
         
-        # Get all student profiles that match the teacher's school - use EXACT same logic
+        # Get all student profiles that match the teacher's school AND grade - use EXACT same logic
         teacher_school_trimmed = teacher_school.strip() if teacher_school else ''
+        teacher_grade_trimmed = teacher_grade.strip() if teacher_grade else ''
         matching_profiles = StudentProfile.objects.filter(
-            school__iexact=teacher_school_trimmed
-        ).exclude(school__isnull=True).exclude(school='')
+            school__iexact=teacher_school_trimmed,
+            grade__iexact=teacher_grade_trimmed
+        ).exclude(school__isnull=True).exclude(school='').exclude(grade__isnull=True).exclude(grade='')
         
-        print(f"🏫 Teacher {user.username} is from school: '{teacher_school_trimmed}'")
-        print(f"📋 Found {matching_profiles.count()} student profiles matching school '{teacher_school_trimmed}'")
+        print(f"🏫 Teacher {user.username} is from school: '{teacher_school_trimmed}', grade: '{teacher_grade_trimmed}'")
+        print(f"📋 Found {matching_profiles.count()} student profiles matching school '{teacher_school_trimmed}' and grade '{teacher_grade_trimmed}'")
         
         # Get student IDs from matching profiles
         student_ids = [profile.student_id for profile in matching_profiles]
@@ -3128,13 +3195,16 @@ def send_parent_feedback_to_teacher(request):
                 'error': 'Access denied. This student is not linked to your parent account.'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        # Get student's school from StudentProfile
+        # Get student's school and grade from StudentProfile
         from authentication.models import StudentProfile
         try:
             student_profile = StudentProfile.objects.get(student_id=student_reg.student_id)
             student_school = student_profile.school
+            student_grade = student_profile.grade
             if student_school:
                 student_school = student_school.strip()
+            if student_grade:
+                student_grade = student_grade.strip()
         except StudentProfile.DoesNotExist:
             return Response({
                 'error': 'Student profile not found. Cannot determine teacher.'
@@ -3145,14 +3215,22 @@ def send_parent_feedback_to_teacher(request):
                 'error': 'Student school not found. Cannot determine teacher.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Find teacher from the same school
+        if not student_grade or student_grade == '':
+            return Response({
+                'error': 'Student grade not found. Cannot determine teacher.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Find teacher from the same school AND grade
         from authentication.models import TeacherProfile, TeacherRegistration
         try:
-            # Get teacher profile with matching school
-            teacher_profiles = TeacherProfile.objects.filter(school__iexact=student_school)
+            # Get teacher profile with matching school AND grade
+            teacher_profiles = TeacherProfile.objects.filter(
+                school__iexact=student_school,
+                grade__iexact=student_grade
+            )
             if not teacher_profiles.exists():
                 return Response({
-                    'error': f'No teacher found for school: {student_school}'
+                    'error': f'No teacher found for school: {student_school} and grade: {student_grade}'
                 }, status=status.HTTP_404_NOT_FOUND)
             
             # Get the first teacher (or could be enhanced to find specific teacher)
@@ -3172,37 +3250,96 @@ def send_parent_feedback_to_teacher(request):
                 teacher_user = User.objects.filter(username=teacher_reg.teacher_username, role='Teacher').first()
                 print(f"⚠️ Multiple teacher users found, using first: {teacher_user.username}, User ID: {teacher_user.userid}")
             
-            # Create notification for teacher
-            from notifications.models import Notification
+            # Create notification for teacher in teacher_notifications table
+            from notifications.models import TeacherNotification
+            from authentication.models import ParentRegistration
             from django.utils import timezone
+            
+            # Get parent registration to get parent_id for sender_id
+            parent_id = None
+            try:
+                parent_reg = ParentRegistration.objects.get(email=user.email)
+                parent_id = parent_reg.parent_id
+            except ParentRegistration.DoesNotExist:
+                print(f"⚠️ Parent registration not found for email: {user.email}")
             
             # Get parent name for the notification message
             parent_name = user.firstname or user.username or 'Parent'
             full_message = f"Feedback from {parent_name} (Parent of {student_reg.first_name} {student_reg.last_name}):\n\n{feedback_message}"
             
-            notification = Notification.objects.create(
-                recipient=teacher_user,
-                title=feedback_title,
-                message=full_message,
-                notification_type='info',
-                is_read=False,
-                created_at=timezone.now()
-            )
-            
-            # Verify notification was created
-            print(f"✅ Created notification ID: {notification.id} for teacher {teacher_user.username} (User ID: {teacher_user.userid}) from parent {user.email}")
-            print(f"✅ Notification recipient_id: {notification.recipient.userid}, title: {notification.title}")
-            
-            # Verify it exists in database
-            verify_notif = Notification.objects.filter(id=notification.id, recipient=teacher_user).first()
-            if verify_notif:
-                print(f"✅ Verified notification exists in database")
-            else:
-                print(f"❌ WARNING: Notification not found in database after creation!")
+            # Create notification in teacher_notifications table
+            try:
+                teacher_notification = TeacherNotification.objects.create(
+                    teacher_id=teacher_reg.teacher_id,
+                    notification_type='parent_feedback',
+                    title=feedback_title,
+                    message=full_message,
+                    sender_type='parent',
+                    sender_id=parent_id,  # parent_id from parent_registration
+                    reference_type='parent_feedback',
+                    reference_id=student_reg.student_id,  # Reference to the student
+                    is_read=False
+                )
+                
+                # Verify notification was created
+                print(f"✅ Created teacher notification ID: {teacher_notification.notification_id} for teacher_id: {teacher_reg.teacher_id}")
+                print(f"✅ Teacher notification title: {teacher_notification.title}")
+                print(f"✅ Teacher notification message: {teacher_notification.message[:100]}...")
+                
+                # Verify it exists in database using ORM
+                verify_notif = TeacherNotification.objects.filter(
+                    notification_id=teacher_notification.notification_id,
+                    teacher_id=teacher_reg.teacher_id
+                ).first()
+                if verify_notif:
+                    print(f"✅ Verified teacher notification exists in database (ORM check)")
+                else:
+                    print(f"❌ WARNING: Teacher notification not found in database after creation (ORM check)!")
+                
+                # Also verify using raw SQL
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT notification_id, title, teacher_id FROM teacher_notifications WHERE notification_id = %s",
+                        [teacher_notification.notification_id]
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        print(f"✅ Raw SQL verification: Found notification_id={row[0]}, title={row[1]}, teacher_id={row[2]}")
+                    else:
+                        print(f"❌ Raw SQL verification: Notification NOT found in database!")
+                        print(f"❌ This means the table might not exist or there's a database issue!")
+                
+            except Exception as save_error:
+                print(f"❌ CRITICAL ERROR saving teacher notification: {save_error}")
+                import traceback
+                print(traceback.format_exc())
+                # Check if table exists
+                from django.db import connection
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.tables 
+                                WHERE table_name = 'teacher_notifications'
+                            );
+                        """)
+                        table_exists = cursor.fetchone()[0]
+                        if not table_exists:
+                            print(f"❌ ERROR: teacher_notifications table does NOT exist in database!")
+                            print(f"❌ Please run the migration or SQL script to create the table!")
+                        else:
+                            print(f"✅ Table exists, but save failed: {save_error}")
+                except Exception as check_error:
+                    print(f"❌ Error checking table existence: {check_error}")
+                
+                return Response({
+                    'error': f'Failed to save teacher notification: {str(save_error)}. Please check if teacher_notifications table exists.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({
                 'message': 'Feedback sent successfully to teacher',
-                'notification_id': notification.id,
+                'notification_id': teacher_notification.notification_id,
                 'teacher_name': teacher_user.firstname or teacher_user.username
             }, status=status.HTTP_201_CREATED)
             
@@ -5555,6 +5692,7 @@ def get_teacher_profile(request):
                 'teacher_name': f"{teacher_reg.first_name} {teacher_reg.last_name}",
                 'email': teacher_reg.email,
                 'phone_number': teacher_reg.phone_number,
+                'grade': '',  # Default empty, should be set by teacher
             }
         )
         
@@ -5613,19 +5751,56 @@ def update_teacher_profile(request):
                 'teacher_name': f"{teacher_reg.first_name} {teacher_reg.last_name}",
                 'email': teacher_reg.email,
                 'phone_number': teacher_reg.phone_number,
+                'grade': '',  # Default empty, should be set by teacher
             }
         )
         
+        # Debug: Print what data is being received
+        print(f"📥 Received update data for teacher {user.username}: {request.data}")
+        print(f"📥 Grade value in request: {request.data.get('grade', 'NOT PROVIDED')}")
+        print(f"📥 Request data type: {type(request.data)}")
+        
+        # Convert request.data to dict if it's a QueryDict (Django REST framework)
+        if hasattr(request.data, 'dict'):
+            update_data = request.data.dict()
+        elif isinstance(request.data, dict):
+            update_data = request.data.copy()
+        else:
+            update_data = dict(request.data)
+        
+        print(f"📥 Request data keys: {list(update_data.keys())}")
+        
+        # Debug: Check if grade is in the update data
+        if 'grade' in update_data:
+            print(f"✅ Grade field found in update data: '{update_data['grade']}'")
+        else:
+            print(f"⚠️ Grade field NOT found in update data. Available keys: {list(update_data.keys())}")
+        
         # Update profile with request data
-        serializer = TeacherProfileSerializer(teacher_profile, data=request.data, partial=True)
+        serializer = TeacherProfileSerializer(teacher_profile, data=update_data, partial=True)
         
         if serializer.is_valid():
-            serializer.save()
+            print(f"✅ Serializer is valid. Saving profile with grade: {serializer.validated_data.get('grade', 'NOT IN VALIDATED DATA')}")
+            print(f"✅ All validated data: {serializer.validated_data}")
+            saved_profile = serializer.save()
+            
+            # Explicitly ensure grade is saved if it was in the request
+            if 'grade' in update_data:
+                grade_value = update_data.get('grade', '').strip()
+                if saved_profile.grade != grade_value:
+                    print(f"⚠️ Grade mismatch detected. Updating explicitly. DB: '{saved_profile.grade}', Request: '{grade_value}'")
+                    saved_profile.grade = grade_value
+                    saved_profile.save(update_fields=['grade', 'updated_at'])
+            
+            # Refresh from database to confirm the save
+            saved_profile.refresh_from_db()
+            print(f"💾 Saved profile grade value (from DB): '{saved_profile.grade}'")
             return Response({
                 'message': 'Teacher profile updated successfully',
                 'profile': serializer.data
             }, status=status.HTTP_200_OK)
         else:
+            print(f"❌ Serializer validation failed: {serializer.errors}")
             return Response({
                 'error': 'Validation failed',
                 'errors': serializer.errors
@@ -5667,51 +5842,106 @@ def get_teacher_students(request):
                 'error': 'Teacher registration not found.'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Get teacher profile to get school
+        # Get teacher profile to get school and grade
         teacher_school = None
+        teacher_grade = None
         try:
             teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
             teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
             # Clean the school name (strip whitespace, handle empty strings)
             if teacher_school:
                 teacher_school = teacher_school.strip()
-            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}'")
+            # Clean the grade (strip whitespace, handle empty strings)
+            if teacher_grade:
+                teacher_grade = teacher_grade.strip()
+            print(f"🏫 Teacher {user.username} (ID: {teacher_reg.teacher_id}) is from school: '{teacher_school}', grade: '{teacher_grade}'")
         except TeacherProfile.DoesNotExist:
             print(f"⚠️ Teacher profile not found for teacher_id: {teacher_reg.teacher_id}")
             return Response({
                 'error': 'Teacher profile not found. Please complete your teacher profile setup.'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Filter students by school if teacher has a school
-        if teacher_school and teacher_school != '':
-            # Get student IDs from StudentProfile that match the teacher's school (case-insensitive, trimmed)
-            # Use __iexact for case-insensitive matching and handle whitespace
-            student_profiles = StudentProfile.objects.filter(
-                school__iexact=teacher_school
+        # Filter students by school and grade if teacher has both
+        if teacher_school and teacher_school != '' and teacher_grade and teacher_grade != '':
+            # Normalize teacher's school and grade for comparison
+            teacher_school_clean = teacher_school.strip()
+            teacher_grade_clean = teacher_grade.strip()
+            
+            print(f"🔍 DEBUG: ========== FILTERING STUDENTS ==========")
+            print(f"🔍 DEBUG: Teacher school: '{teacher_school_clean}'")
+            print(f"🔍 DEBUG: Teacher grade: '{teacher_grade_clean}'")
+            
+            # First, get all students with matching school from student_profile table
+            all_school_profiles = StudentProfile.objects.filter(
+                school__iexact=teacher_school_clean
             ).exclude(school__isnull=True).exclude(school='')
             
-            student_ids = [profile.student_id for profile in student_profiles]
-            print(f"📋 Found {len(student_ids)} student profiles matching school '{teacher_school}'")
+            print(f"🔍 DEBUG: Step 1 - Found {all_school_profiles.count()} students with school '{teacher_school_clean}'")
             
-            # Debug: Print all student profiles to see what schools exist
-            all_profiles = StudentProfile.objects.all()
-            print(f"🔍 DEBUG: Total student profiles in database: {all_profiles.count()}")
-            for profile in all_profiles[:10]:  # Print first 10 for debugging
-                print(f"   Student ID {profile.student_id}: school='{profile.school}'")
+            # Helper function to normalize grade for comparison
+            def normalize_grade_for_match(grade_str):
+                """Normalize grade string for comparison - handles variations like '10th', '10', 'Class 10'"""
+                if not grade_str:
+                    return ''
+                normalized = grade_str.strip().lower()
+                # Remove common prefixes/suffixes
+                normalized = normalized.replace('class', '').replace('grade', '').replace('th', '').replace('st', '').replace('nd', '').replace('rd', '')
+                # Remove extra spaces
+                normalized = ' '.join(normalized.split())
+                return normalized
+            
+            teacher_grade_normalized = normalize_grade_for_match(teacher_grade_clean)
+            
+            # Then filter by grade - do it manually to ensure exact matching
+            student_profiles = []
+            for profile in all_school_profiles:
+                profile_grade = profile.grade if profile.grade else ''
+                profile_grade_clean = profile_grade.strip() if profile_grade else ''
+                profile_grade_normalized = normalize_grade_for_match(profile_grade_clean)
+                
+                # Debug each student
+                print(f"   🔍 Checking Student ID {profile.student_id}:")
+                print(f"      - school: '{profile.school}'")
+                print(f"      - grade: '{profile_grade}' (cleaned: '{profile_grade_clean}', normalized: '{profile_grade_normalized}')")
+                print(f"      - teacher grade normalized: '{teacher_grade_normalized}'")
+                
+                if profile_grade_clean:
+                    # Try exact match first (case-insensitive)
+                    if profile_grade_clean.lower() == teacher_grade_clean.lower():
+                        student_profiles.append(profile)
+                        print(f"      ✅ EXACT MATCH! Adding to results")
+                    # Try normalized match (handles variations)
+                    elif profile_grade_normalized and teacher_grade_normalized and profile_grade_normalized == teacher_grade_normalized:
+                        student_profiles.append(profile)
+                        print(f"      ✅ NORMALIZED MATCH! Adding to results")
+                    else:
+                        print(f"      ❌ NO MATCH - Student grade '{profile_grade_clean}' (norm: '{profile_grade_normalized}') != Teacher grade '{teacher_grade_clean}' (norm: '{teacher_grade_normalized}')")
+                else:
+                    print(f"      ⚠️ SKIP - Student has no grade set")
+            
+            student_ids = [profile.student_id for profile in student_profiles]
+            print(f"🔍 DEBUG: ========== FILTERING COMPLETE ==========")
+            print(f"📋 Final result: {len(student_ids)} student IDs matching school AND grade: {student_ids}")
             
             if student_ids:
                 students = StudentRegistration.objects.filter(student_id__in=student_ids)
-                print(f"📊 Found {students.count()} students from school '{teacher_school}' (student IDs: {student_ids})")
+                print(f"📊 Found {students.count()} students from school '{teacher_school}' and grade '{teacher_grade}' (student IDs: {student_ids})")
             else:
-                # No students found with matching school
+                # No students found with matching school and grade
                 students = StudentRegistration.objects.none()
-                print(f"⚠️ No students found with school '{teacher_school}'")
-                print(f"💡 Tip: Make sure students have StudentProfile records with matching school name")
+                print(f"⚠️ No students found with school '{teacher_school}' and grade '{teacher_grade}'")
+                print(f"💡 Tip: Make sure students have StudentProfile records with matching school name and grade")
         else:
-            # If teacher has no school, return error (don't return all students)
-            print(f"❌ Teacher has no school assigned (school='{teacher_school}')")
+            # If teacher has no school or grade, return error (don't return all students)
+            missing_fields = []
+            if not teacher_school or teacher_school == '':
+                missing_fields.append('school')
+            if not teacher_grade or teacher_grade == '':
+                missing_fields.append('grade')
+            print(f"❌ Teacher missing required fields: {', '.join(missing_fields)} (school='{teacher_school}', grade='{teacher_grade}')")
             return Response({
-                'error': 'Teacher has no school assigned. Please update your teacher profile with a school name.'
+                'error': f'Teacher profile is incomplete. Please update your teacher profile with {", ".join(missing_fields)}.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         students_data = []

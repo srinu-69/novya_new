@@ -2837,6 +2837,7 @@ import './Navbarrr.css';
 import novyaLogo from '../home/assets/NOVYA LOGO.png';
 import { API_CONFIG, djangoAPI } from '../../config/api';
 import { updateStreak, getTrophyTitle } from './streaksUtil';
+import NavVoiceControl from './VoiceControl/NavVoiceControl';
 
 const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -2874,6 +2875,7 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
   const [streak, setStreak] = useState(0);
   const [streakTitle, setStreakTitle] = useState('');
   const [streakDropdownOpen, setStreakDropdownOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('earn'); // For reward points tabs
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -4639,6 +4641,34 @@ const Navbar = ({ isFullScreen, rewardPoints = 0 }) => {
 
         {/* Right Section - Icons & Profile */}
         <div className="navbar-right">
+          {/* Voice Control - Desktop Only */}
+          {!isMobile && (
+            <NavVoiceControl
+              openLanguage={() => setLangDropdownOpen(true)}
+              openNotifications={() => setNotificationsOpen(true)}
+              markAllRead={() => {}}
+              clearAllNotifications={() => {}}
+              deleteNotification={() => {}}
+              openCalendar={() => {
+                loadStudyPlans();
+                setCalendarOpen(true);
+              }}
+              AddSchedule={() => {}}
+              EditSchedule={() => {}}
+              openScheduleInput={() => {}}
+              SaveSchedule={() => {}}
+              deleteSchedule={() => {}}
+              CancelSchedule={() => {}}
+              openRewardPoint={() => {
+                loadRewardsHistory();
+                setRewardsHistoryOpen(true);
+              }}
+              openStreak={() => setStreakDropdownOpen(true)}
+              setActiveTab={setActiveTab}
+              onNavigate={(path) => navigate(path)}
+            />
+          )}
+
        {/* Calendar Icon - Desktop Only */}
 {!isMobile && (
   <div

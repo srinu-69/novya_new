@@ -26,4 +26,9 @@ urlpatterns = [
     path('student/<int:notification_id>/mark-read/', views.mark_notification_as_read, name='mark_notification_as_read'),
     path('student/<int:notification_id>/delete/', views.delete_student_notification, name='delete_student_notification'),
     path('student/clear-all/', views.clear_all_student_notifications, name='clear_all_student_notifications'),
+    
+    # Teacher Notifications
+    path('teacher/list/', views.get_teacher_notifications, name='get_teacher_notifications'),
+    path('teacher/<int:notification_id>/mark-read/', views.mark_teacher_notification_as_read, name='mark_teacher_notification_as_read'),
+    path('teacher/<int:notification_id>/delete/', views.delete_teacher_notification, name='delete_teacher_notification'),
 ]

@@ -1,0 +1,346 @@
+/* Voice Assistant Styles */
+.voice-assistant-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+}
+
+.voice-assistant-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.voice-toggle-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 50px;
+  padding: 12px 24px;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s ease;
+  animation: pulse 2s infinite;
+}
+
+.voice-toggle-btn:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+  animation: none;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.voice-toggle-btn.listening {
+  background: linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%);
+  animation: listening-pulse 1s infinite;
+}
+
+@keyframes listening-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 65, 108, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+}
+
+.voice-toggle-btn.speaking {
+  background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+}
+
+.voice-toggle-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.voice-icon {
+  font-size: 20px;
+}
+
+.voice-status {
+  font-size: 14px;
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-control-btn {
+  background: white;
+  border: 2px solid #667eea;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.3s ease;
+}
+
+.voice-control-btn:disabled {
+  border-color: #cccccc;
+  color: #cccccc;
+  cursor: not-allowed;
+}
+
+.voice-control-btn:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+  transform: scale(1.1);
+}
+
+.voice-feedback {
+  position: absolute;
+  bottom: 100px;
+  right: 0;
+  background: white;
+  border-radius: 15px;
+  padding: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  max-width: 300px;
+  animation: slideIn 0.3s ease;
+  border-left: 4px solid #667eea;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feedback-icon {
+  font-size: 20px;
+  margin-bottom: 5px;
+}
+
+.feedback-text {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+}
+
+.voice-disabled-message {
+  background: rgba(255, 0, 0, 0.1);
+  border: 1px solid #ff6b6b;
+  border-radius: 8px;
+  padding: 10px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ff6b6b;
+  font-size: 14px;
+}
+
+.disabled-icon {
+  font-size: 18px;
+}
+
+.disabled-text {
+  font-weight: 500;
+}
+
+/* Help Modal */
+.help-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.help-modal-content {
+  background: white;
+  border-radius: 20px;
+  padding: 30px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.help-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+.close-help {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.close-help:hover {
+  color: #333;
+}
+
+.help-body {
+  margin-bottom: 20px;
+}
+
+.commands-section {
+  margin-bottom: 20px;
+}
+
+.commands-section h4 {
+  color: #667eea;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.commands-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.commands-section li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #555;
+}
+
+.commands-section li strong {
+  color: #333;
+  font-weight: 600;
+}
+
+.help-footer {
+  text-align: center;
+}
+
+.close-help-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 30px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.close-help-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .voice-assistant-container {
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .voice-toggle-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+  
+  .voice-feedback {
+    position: fixed;
+    bottom: 80px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+  
+  .help-modal-content {
+    margin: 20px;
+    padding: 20px;
+  }
+  
+  .voice-disabled-message {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+/* Add disabled state styles */
+.voice-toggle-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #ccc !important;
+}
+
+.voice-toggle-btn.disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Make review items clickable */
+.question-review-item {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #e2e8f0;
+  background: white;
+}
+
+.question-review-item:hover {
+  background-color: #f8fafc;
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+/* Add active state for selected question in review */
+.question-review-item.active {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  border-left: 4px solid #3b82f6;
+}

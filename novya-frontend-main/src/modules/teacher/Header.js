@@ -1919,6 +1919,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_CONFIG, djangoAPI } from '../../config/api';
+import TeacherVoiceControl from './TeacherVoiceControl';
 
 const HeaderBar = ({ 
   selectedSection, 
@@ -1941,6 +1942,7 @@ const HeaderBar = ({
     email: '',
     phone_number: '',
     school: '',
+    grade: '',
     department: ''
   });
   
@@ -2110,6 +2112,7 @@ const HeaderBar = ({
         email: response.email || '',
         phone_number: response.phone_number || '',
         school: response.school || '',
+        grade: response.grade || '',
         department: response.department || ''
       });
     } catch (error) {
@@ -2123,6 +2126,7 @@ const HeaderBar = ({
         email: teacherData.email || '',
         phone_number: teacherData.phone || '',
         school: '',
+        grade: '',
         department: ''
       });
     } finally {
@@ -2145,13 +2149,17 @@ const HeaderBar = ({
   const handleSave = async () => {
     try {
       setIsLoading(true);
+      console.log('📤 Sending profile data:', profileData);
+      console.log('📤 Grade value being sent:', profileData.grade);
       const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.TEACHER_PROFILE_UPDATE, profileData);
+      console.log('✅ Profile update response:', response);
       setIsEditing(false);
       setProfileData(response.profile);
       // Show success message (you can add toast notification here)
       alert('Profile updated successfully!');
     } catch (error) {
-      console.error('Error updating teacher profile:', error);
+      console.error('❌ Error updating teacher profile:', error);
+      console.error('❌ Error details:', error.response?.data);
       alert('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
@@ -2196,6 +2204,25 @@ const HeaderBar = ({
     return sectionMap[selectedSection] || sections.find(s => s.key === selectedSection)?.label || 'Hello Teacher 👋';
   };
 
+  // Functions exposed to TeacherVoiceControl
+  const api = {
+    openNotifications: () => { setShowNotifications(true); setShowLanguageDropdown(false); setShowProfile(false); },
+    closeNotifications: () => setShowNotifications(false),
+    toggleNotifications: () => { setShowNotifications(s => !s); setShowLanguageDropdown(false); setShowProfile(false); },
+    openLanguage: () => { setShowLanguageDropdown(true); setShowNotifications(false); setShowProfile(false); },
+    closeLanguage: () => setShowLanguageDropdown(false),
+    changeLanguage: (lng) => changeLanguage(lng),
+    enableDark: (state) => setDarkMode(!!state),
+    toggleDark: () => setDarkMode(s => !s),
+    openMenu: () => onMenuToggle && onMenuToggle(),
+    openProfile: () => { setShowProfile(true); setShowNotifications(false); setShowLanguageDropdown(false); },
+    closeProfile: () => setShowProfile(false),
+    toggleProfile: () => { setShowProfile(s => !s); setShowNotifications(false); setShowLanguageDropdown(false); },
+    navigateToSection: (section) => onSectionSelect && onSectionSelect(section),
+    getCurrentSection: () => selectedSection,
+    getSections: () => sections,
+  };
+
   return (
     <header className="top-header">
       <div className="header-left">
@@ -2211,6 +2238,8 @@ const HeaderBar = ({
       </div>
      
       <div className="header-right">
+        <TeacherVoiceControl api={api} />
+
         {!isMobile && (
           <div className="time-display">
             <div className="current-time">{formatTime(currentTime)}</div>
@@ -2412,6 +2441,19 @@ const HeaderBar = ({
                         onChange={handleInputChange}
                         disabled={!isEditing}
                         placeholder="Enter school name"
+                      />
+                    </div>
+                    
+                    <div className="profile-form-group">
+                      <label>Grade</label>
+                      <input
+                        type="text"
+                        name="grade"
+                        value={profileData.grade}
+                        onChange={handleInputChange}
+                        disabled={!isEditing}
+                        placeholder="Enter grade"
+                        required
                       />
                     </div>
                     

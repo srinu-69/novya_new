@@ -32,6 +32,7 @@ import {
 import novyaLogo from '../home/assets/NOVYA LOGO.png';
 import { FaPhoneAlt } from 'react-icons/fa';
 import { API_CONFIG, djangoAPI, appendChildEmail, getChildEmailForParent } from '../../config/api';
+import VoiceControlParent from './VoiceControlParent';
 import './styles.css';
 
 // const ParentDashboard = () => {
@@ -2645,6 +2646,26 @@ const ParentDashboard = () => {
     localStorage.setItem('preferredLanguage', lng);
   };
 
+  const openLanguageMenu = () => {
+    setShowLanguageDropdown(true);
+    setShowNotifications(false);
+    setShowSettings(false);
+  };
+
+  const openNotificationsMenu = () => {
+    setShowNotifications(true);
+    setShowSettings(false);
+    setShowLanguageDropdown(false);
+    fetchNotifications();
+  };
+
+  const openParentProfile = () => {
+    setShowProfile(true);
+    setShowNotifications(false);
+    setShowSettings(false);
+    setShowLanguageDropdown(false);
+  };
+
   const handleMobileMenuToggle = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
@@ -2844,6 +2865,19 @@ const ParentDashboard = () => {
           </div>
          
           <div className="header-right">
+            <div className="header-mic-slot">
+              <VoiceControlParent
+                setSelectedSection={setSelectedSection}
+                parentName={parentName}
+                notifications={notifications}
+                onLogout={handleLogout}
+                changeLanguage={changeLanguage}
+                openLanguageMenu={openLanguageMenu}
+                openNotificationsMenu={openNotificationsMenu}
+                openParentProfile={openParentProfile}
+              />
+            </div>
+
             <div className="time-display">
               <div className="current-time">{formatTime(currentTime)}</div>
               <div className="current-date">{currentTime.toLocaleDateString(i18n.language, { weekday: 'long', month: 'short', day: 'numeric' })}</div>

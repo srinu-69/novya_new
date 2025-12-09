@@ -502,7 +502,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         model = TeacherProfile
         fields = [
             'profile_id', 'teacher_id', 'teacher_username', 'teacher_name', 
-            'email', 'phone_number', 'school', 'department', 
+            'email', 'phone_number', 'school', 'grade', 'department', 
             'created_at', 'updated_at', 'teacher_name_display'
         ]
         read_only_fields = ['profile_id', 'created_at', 'updated_at']

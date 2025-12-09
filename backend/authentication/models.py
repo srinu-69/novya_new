@@ -272,6 +272,7 @@ class TeacherProfile(models.Model):
         validators=[RegexValidator(regex=r'^\+?[\d\s\-\(\)]{9,15}$', message="Phone number must be entered in a valid format. Up to 15 digits allowed.")]
     )
     school = models.CharField(max_length=150, null=True, blank=True)
+    grade = models.CharField(max_length=50)
     department = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

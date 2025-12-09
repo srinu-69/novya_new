@@ -93,6 +93,7 @@ CREATE TABLE teacher_profile (
     email VARCHAR(255),
     phone_number VARCHAR(15),
     school VARCHAR(150),
+    grade VARCHAR(50) NOT NULL,
     department VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -709,6 +710,24 @@ CREATE TABLE parent_notifications (
     FOREIGN KEY (student_id) REFERENCES student_registration(student_id) ON DELETE CASCADE
 );
 
+-- Teacher Notifications
+-- Stores notifications for teachers in the teacher portal
+CREATE TABLE teacher_notifications (
+    notification_id SERIAL PRIMARY KEY,
+    teacher_id INTEGER NOT NULL,
+    notification_type VARCHAR(50) NOT NULL DEFAULT 'system_message',
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    sender_type VARCHAR(50), -- 'system', 'admin', 'student', 'parent'
+    sender_id INTEGER, -- ID of the sender (student_id, parent_id, admin_id, etc.)
+    reference_type VARCHAR(50), -- Type of reference ('student_activity', 'parent_message', 'system_alert', etc.)
+    reference_id INTEGER, -- Reference to related entity (student_id, message_id, etc.)
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES teacher_registration(teacher_id) ON DELETE CASCADE
+);
+
 -- Reviews
 CREATE TABLE review (
     review_id SERIAL PRIMARY KEY,
@@ -981,6 +1000,12 @@ CREATE INDEX idx_parent_notifications_parent_student ON parent_notifications(par
 CREATE INDEX idx_parent_notifications_parent_read ON parent_notifications(parent_email, is_read);
 CREATE INDEX idx_parent_notifications_date ON parent_notifications(created_at);
 
+-- Teacher Notifications Indexes
+CREATE INDEX idx_teacher_notifications_teacher ON teacher_notifications(teacher_id);
+CREATE INDEX idx_teacher_notifications_date ON teacher_notifications(created_at);
+CREATE INDEX idx_teacher_notifications_read ON teacher_notifications(is_read);
+CREATE INDEX idx_teacher_notifications_type ON teacher_notifications(notification_type);
+
 -- Course Indexes
 CREATE INDEX idx_pdffiles_course_topic ON pdffiles(course_id, topic_id);
 CREATE INDEX idx_videofiles_course_topic ON videofiles(course_id, topic_id);
@@ -1058,6 +1083,7 @@ COMMENT ON TABLE user_coin_balance IS 'Stores current coin balance for each user
 COMMENT ON TABLE student_feedback IS 'Stores feedback from students with rating and comments';
 COMMENT ON TABLE student_notifications IS 'Stores study plan notifications for students';
 COMMENT ON TABLE parent_notifications IS 'Stores notifications sent by teachers to parents about specific students';
+COMMENT ON TABLE teacher_notifications IS 'Stores notifications for teachers in the teacher portal';
 COMMENT ON TABLE attendance IS 'Tracks student attendance marked by teachers in real-time with check-in/check-out times and hours attended';
 COMMENT ON TABLE attendance IS 'Tracks student attendance marked by teachers in real-time with check-in/check-out times';
 
@@ -1065,7 +1091,7 @@ COMMENT ON TABLE attendance IS 'Tracks student attendance marked by teachers in 
 -- SCHEMA COMPLETE
 -- =====================================================
 
--- Total Tables: 27 (Core functionality + Rewards/Coins system)
+-- Total Tables: 28 (Core functionality + Rewards/Coins system + Teacher Notifications)
 -- All tables use SERIAL for auto-incrementing IDs
 -- All foreign keys properly defined
 -- Indexes for performance

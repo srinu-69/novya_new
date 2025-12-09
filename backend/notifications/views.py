@@ -7,9 +7,9 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 import sys
 
-from .models import Review, Rating, Report, StudentNotification, Notification
+from .models import Review, Rating, Report, StudentNotification, TeacherNotification, Notification
 from .serializers import (
-    ReviewSerializer, RatingSerializer, ReportSerializer, StudentNotificationSerializer
+    ReviewSerializer, RatingSerializer, ReportSerializer, StudentNotificationSerializer, TeacherNotificationSerializer
 )
 from authentication.models import StudentRegistration
 
@@ -106,39 +106,78 @@ class ReportDetailView(generics.RetrieveUpdateDestroyAPIView):
 def get_notifications(request):
     """
     Get all notifications for the authenticated user (works for teachers, students, parents)
+    For teachers, fetches from teacher_notifications table
+    For others, fetches from legacy notifications table
     """
     try:
         user = request.user
         print(f"📥 get_notifications called - User: {user.username}, Role: {user.role}, User ID: {user.userid}")
         
-        # Get notifications for the current user
-        notifications = Notification.objects.filter(
-            recipient=user
-        ).order_by('-created_at')
-        
-        notification_count = notifications.count()
-        print(f"📥 Found {notification_count} notifications for user: {user.username} (ID: {user.userid})")
-        
-        # Debug: Print first few notifications
-        if notification_count > 0:
-            for notif in notifications[:3]:
-                print(f"📥   - Notification ID: {notif.id}, Title: {notif.title}, Recipient ID: {notif.recipient.userid}")
-        
-        # Serialize notifications
         notifications_data = []
-        for notif in notifications:
-            notifications_data.append({
-                'id': notif.id,
-                'title': notif.title,
-                'message': notif.message,
-                'type': notif.notification_type,
-                'notification_type': notif.notification_type,  # Add both for compatibility
-                'is_read': notif.is_read,
-                'created_at': notif.created_at.isoformat() if notif.created_at else None,
-                'read_at': notif.read_at.isoformat() if notif.read_at else None,
-            })
         
-        print(f"📥 Returning {len(notifications_data)} notifications")
+        # If user is a teacher, get notifications from teacher_notifications table
+        if user.role == 'Teacher':
+            from authentication.models import TeacherRegistration
+            try:
+                teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+                teacher_notifications = TeacherNotification.objects.filter(
+                    teacher_id=teacher_reg.teacher_id
+                ).order_by('-created_at')
+                
+                notification_count = teacher_notifications.count()
+                print(f"📥 Found {notification_count} teacher notifications for teacher_id: {teacher_reg.teacher_id}")
+                
+                # Serialize teacher notifications
+                serializer = TeacherNotificationSerializer(teacher_notifications, many=True)
+                for notif_data in serializer.data:
+                    notifications_data.append({
+                        'id': notif_data['notification_id'],
+                        'notification_id': notif_data['notification_id'],
+                        'title': notif_data['title'],
+                        'message': notif_data['message'],
+                        'type': notif_data['notification_type'],
+                        'notification_type': notif_data['notification_type'],
+                        'is_read': notif_data['is_read'],
+                        'created_at': notif_data['created_at'],
+                        'read_at': notif_data['read_at'],
+                        'sender_name': notif_data.get('sender_name'),
+                        'sender_type': notif_data.get('sender_type'),
+                    })
+                
+                print(f"📥 Returning {len(notifications_data)} teacher notifications")
+            except TeacherRegistration.DoesNotExist:
+                print(f"⚠️ Teacher registration not found for user: {user.username}")
+                return Response({
+                    'error': 'Teacher registration not found.'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # For non-teachers, get from legacy notifications table
+            notifications = Notification.objects.filter(
+                recipient=user
+            ).order_by('-created_at')
+            
+            notification_count = notifications.count()
+            print(f"📥 Found {notification_count} notifications for user: {user.username} (ID: {user.userid})")
+            
+            # Debug: Print first few notifications
+            if notification_count > 0:
+                for notif in notifications[:3]:
+                    print(f"📥   - Notification ID: {notif.id}, Title: {notif.title}, Recipient ID: {notif.recipient.userid}")
+            
+            # Serialize notifications
+            for notif in notifications:
+                notifications_data.append({
+                    'id': notif.id,
+                    'title': notif.title,
+                    'message': notif.message,
+                    'type': notif.notification_type,
+                    'notification_type': notif.notification_type,  # Add both for compatibility
+                    'is_read': notif.is_read,
+                    'created_at': notif.created_at.isoformat() if notif.created_at else None,
+                    'read_at': notif.read_at.isoformat() if notif.read_at else None,
+                })
+        
+        print(f"📥 Returning {len(notifications_data)} total notifications")
         return Response(notifications_data, status=status.HTTP_200_OK)
     
     except Exception as e:
@@ -500,4 +539,170 @@ def clear_all_student_notifications(request):
         traceback.print_exc()
         return Response({
             'error': f'Failed to clear notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def get_teacher_id_from_user(user):
+    """
+    Helper function to get teacher_id from TeacherRegistration for a given User.
+    Returns the teacher_id from teacher_registration table.
+    """
+    try:
+        from authentication.models import TeacherRegistration
+        if user and hasattr(user, 'username') and user.username:
+            try:
+                teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+                return teacher_reg.teacher_id
+            except TeacherRegistration.DoesNotExist:
+                return None
+        else:
+            return None
+    except Exception:
+        return None
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_teacher_notifications(request):
+    """
+    Get all notifications for the authenticated teacher
+    """
+    try:
+        user = request.user
+        print(f"📥 get_teacher_notifications called - User: {user.username}, Role: {user.role}")
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        teacher_id = get_teacher_id_from_user(user)
+        print(f"📥 Teacher ID: {teacher_id}")
+        
+        if teacher_id is None:
+            print(f"❌ Teacher registration not found for user: {user.username}")
+            return Response({
+                'error': 'Teacher registration not found. Please complete your registration first.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        notifications = TeacherNotification.objects.filter(
+            teacher_id=teacher_id
+        ).order_by('-created_at')
+        
+        notification_count = notifications.count()
+        print(f"📥 Found {notification_count} teacher notifications for teacher_id: {teacher_id}")
+        
+        # Log each notification for debugging
+        if notification_count > 0:
+            print(f"📥 Notification IDs: {[n.notification_id for n in notifications]}")
+            for notif in notifications[:5]:  # Log first 5
+                print(f"📥 - ID: {notif.notification_id}, Title: {notif.title}, Type: {notif.notification_type}")
+        else:
+            print(f"⚠️ No teacher notifications found in database for teacher_id: {teacher_id}")
+            # Check if there are any notifications at all
+            total_notifications = TeacherNotification.objects.all().count()
+            print(f"📥 Total teacher notifications in database: {total_notifications}")
+        
+        serializer = TeacherNotificationSerializer(notifications, many=True)
+        print(f"📥 Serialized {len(serializer.data)} teacher notifications")
+        return Response({
+            'notifications': serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        print(f"❌ Exception in get_teacher_notifications: {str(e)}")
+        traceback.print_exc()
+        return Response({
+            'error': f'Failed to get teacher notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_teacher_notification_as_read(request, notification_id):
+    """
+    Mark a teacher notification as read
+    """
+    try:
+        user = request.user
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        teacher_id = get_teacher_id_from_user(user)
+        if teacher_id is None:
+            return Response({
+                'error': 'Teacher registration not found. Please complete your registration first.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            notification = TeacherNotification.objects.get(
+                notification_id=notification_id,
+                teacher_id=teacher_id
+            )
+        except TeacherNotification.DoesNotExist:
+            return Response({
+                'error': 'Notification not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        notification.is_read = True
+        notification.read_at = timezone.now()
+        notification.save()
+        
+        return Response({
+            'message': 'Notification marked as read',
+            'notification': TeacherNotificationSerializer(notification).data
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'error': f'Failed to mark notification as read: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_teacher_notification(request, notification_id):
+    """
+    Delete a single teacher notification
+    """
+    try:
+        user = request.user
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        teacher_id = get_teacher_id_from_user(user)
+        if teacher_id is None:
+            return Response({
+                'error': 'Teacher registration not found. Please complete your registration first.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            notification = TeacherNotification.objects.get(
+                notification_id=notification_id,
+                teacher_id=teacher_id
+            )
+        except TeacherNotification.DoesNotExist:
+            return Response({
+                'error': 'Notification not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        notification.delete()
+        
+        return Response({
+            'message': 'Notification deleted successfully'
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'error': f'Failed to delete notification: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

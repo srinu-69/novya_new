@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Review, Rating, Report, StudentNotification
+from .models import Review, Rating, Report, StudentNotification, TeacherNotification
 from authentication.models import User
 from courses.models import Course, Topic
 
@@ -90,4 +90,53 @@ class StudentNotificationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'message': 'Message is required'})
         if not data.get('student_id'):
             raise serializers.ValidationError({'student_id': 'Student ID is required'})
+        return data
+
+
+class TeacherNotificationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for TeacherNotification model
+    """
+    sender_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TeacherNotification
+        fields = [
+            'notification_id', 'teacher_id', 'notification_type', 'title',
+            'message', 'sender_type', 'sender_id', 'reference_type', 'reference_id',
+            'is_read', 'read_at', 'created_at', 'sender_name'
+        ]
+        read_only_fields = ['notification_id', 'created_at']
+    
+    def get_sender_name(self, obj):
+        """Get sender name based on sender_type"""
+        if obj.sender_type == 'parent' and obj.sender_id:
+            try:
+                from authentication.models import ParentRegistration
+                parent = ParentRegistration.objects.get(parent_id=obj.sender_id)
+                return f"{parent.first_name} {parent.last_name}".strip()
+            except ParentRegistration.DoesNotExist:
+                return None
+        elif obj.sender_type == 'student' and obj.sender_id:
+            try:
+                from authentication.models import StudentRegistration
+                student = StudentRegistration.objects.get(student_id=obj.sender_id)
+                return f"{student.first_name} {student.last_name}".strip()
+            except StudentRegistration.DoesNotExist:
+                return None
+        elif obj.sender_type == 'system':
+            return 'System'
+        elif obj.sender_type == 'admin':
+            return 'Administrator'
+        return None
+    
+    def validate(self, data):
+        """Validate notification data"""
+        # Ensure required fields are present
+        if not data.get('title'):
+            raise serializers.ValidationError({'title': 'Title is required'})
+        if not data.get('message'):
+            raise serializers.ValidationError({'message': 'Message is required'})
+        if not data.get('teacher_id'):
+            raise serializers.ValidationError({'teacher_id': 'Teacher ID is required'})
         return data

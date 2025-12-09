@@ -249,6 +249,56 @@ class ParentNotification(models.Model):
         return f"Parent {self.parent_email} - {self.title}"
 
 
+class TeacherNotification(models.Model):
+    """
+    Teacher Notification model for teacher portal notifications
+    Stores notifications for teachers in the teacher portal
+    """
+    NOTIFICATION_TYPES = [
+        ('system_message', 'System Message'),
+        ('parent_feedback', 'Parent Feedback'),
+        ('student_activity', 'Student Activity'),
+        ('parent_message', 'Parent Message'),
+        ('system_alert', 'System Alert'),
+        ('other', 'Other'),
+    ]
+    
+    SENDER_TYPES = [
+        ('system', 'System'),
+        ('admin', 'Admin'),
+        ('student', 'Student'),
+        ('parent', 'Parent'),
+    ]
+    
+    notification_id = models.AutoField(primary_key=True)
+    teacher_id = models.IntegerField()  # References teacher_registration(teacher_id) - FK constraint handled at DB level
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='system_message')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    sender_type = models.CharField(max_length=50, null=True, blank=True, choices=SENDER_TYPES)  # 'system', 'admin', 'student', 'parent'
+    sender_id = models.IntegerField(null=True, blank=True)  # ID of the sender (student_id, parent_id, admin_id, etc.)
+    reference_type = models.CharField(max_length=50, null=True, blank=True)  # Type of reference ('student_activity', 'parent_message', etc.)
+    reference_id = models.IntegerField(null=True, blank=True)  # Reference to related entity (student_id, message_id, etc.)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'teacher_notifications'
+        ordering = ['-created_at']
+        verbose_name = 'Teacher Notification'
+        verbose_name_plural = 'Teacher Notifications'
+        indexes = [
+            models.Index(fields=['teacher_id']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['is_read']),
+            models.Index(fields=['notification_type']),
+        ]
+    
+    def __str__(self):
+        return f"Teacher {self.teacher_id} - {self.title}"
+
+
 class Announcement(models.Model):
     """
     Announcement model for backward compatibility
