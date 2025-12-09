@@ -46,6 +46,7 @@ urlpatterns = [
     path('child-school-scores/', views.get_child_school_scores_for_parent, name='get_child_school_scores_for_parent'),
     path('child-attendance/', views.get_child_attendance_for_parent, name='get_child_attendance_for_parent'),
     path('send-parent-feedback/', views.send_parent_feedback_to_student, name='send_parent_feedback_to_student'),
+    path('send-parent-feedback-to-teacher/', views.send_parent_feedback_to_teacher, name='send_parent_feedback_to_teacher'),
     path('save-school-scores/', views.save_student_school_scores, name='save_student_school_scores'),
     
     # Parent notification endpoints

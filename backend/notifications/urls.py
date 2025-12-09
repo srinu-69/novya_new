@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # General Notifications (for teachers and other users)
+    path('', views.get_notifications, name='get_notifications'),
+    
     # Reviews
     path('reviews/', views.ReviewListCreateView.as_view(), name='review_list_create'),
     path('reviews/<int:pk>/', views.ReviewDetailView.as_view(), name='review_detail'),

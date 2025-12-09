@@ -294,8 +294,8 @@ const Reports = () => {
         return;
       }
 
-      console.log("📤 Sending parent feedback to student:", childEmail);
-      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.SEND_PARENT_FEEDBACK, {
+      console.log("📤 Sending parent feedback to teacher:", childEmail);
+      const response = await djangoAPI.post(API_CONFIG.DJANGO.AUTH.SEND_PARENT_FEEDBACK_TO_TEACHER, {
         child_email: childEmail,
         message: feedback.trim(),
         title: "Feedback from Parent"
@@ -303,7 +303,7 @@ const Reports = () => {
 
       console.log("✅ Feedback sent successfully:", response);
       setFeedback("");
-      setFeedbackStatus({ ok: true, msg: "Thank you — feedback sent to your child successfully." });
+      setFeedbackStatus({ ok: true, msg: "Thank you — feedback sent to teacher successfully." });
     } catch (error) {
       console.error("❌ Error sending feedback:", error);
       setFeedbackStatus({ ok: false, msg: error.message || "Failed to send feedback. Please try again." });
@@ -545,10 +545,10 @@ const Reports = () => {
             <div style={{ marginTop: 8, fontSize: 12, color: "#6b7882" }}>Click any past day (up to today) to view details. Future days show no data.</div>
           </Glass>
 
-          {/* Parent feedback */}
+          {/* Teacher feedback */}
           <Glass style={{ marginTop: 16 }}>
             <div style={S.cardHeader}>
-              <h3 style={S.cardTitle}>Parent Feedback</h3>
+              <h3 style={S.cardTitle}>Teacher Feedback</h3>
               <div style={S.cardSmallMeta}>Share quick notes for the teacher</div>
             </div>
             <form onSubmit={handleFeedbackSubmit}>

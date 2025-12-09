@@ -1961,14 +1961,93 @@ const HeaderBar = ({
     return () => clearInterval(timeInterval);
   }, []);
 
+  // Fetch notifications from API
+  const fetchNotifications = async () => {
+    try {
+      // Get notifications URL with fallback
+      const DJANGO_BASE_URL = process.env.REACT_APP_DJANGO_URL || 'http://localhost:8001/api';
+      let notificationsUrl = null;
+      
+      // Try to get URL from API_CONFIG
+      if (API_CONFIG && API_CONFIG.DJANGO && API_CONFIG.DJANGO.NOTIFICATIONS && API_CONFIG.DJANGO.NOTIFICATIONS.LIST) {
+        notificationsUrl = API_CONFIG.DJANGO.NOTIFICATIONS.LIST;
+      } else {
+        // Use fallback URL
+        notificationsUrl = `${DJANGO_BASE_URL}/notifications/`;
+        console.warn('⚠️ API_CONFIG.DJANGO.NOTIFICATIONS.LIST not found, using fallback:', notificationsUrl);
+        console.warn('API_CONFIG:', API_CONFIG);
+      }
+      
+      console.log('📥 Fetching notifications from:', notificationsUrl);
+      const response = await djangoAPI.get(notificationsUrl);
+      console.log('📥 Notifications API response:', response);
+      
+      const notificationsData = Array.isArray(response) ? response : (response.results || []);
+      console.log('📥 Processed notifications data:', notificationsData);
+      
+      // Format notifications for display
+      const formattedNotifications = notificationsData.map((notif) => {
+        const createdDate = notif.created_at ? new Date(notif.created_at) : new Date();
+        const timeAgo = getTimeAgo(createdDate);
+        
+        return {
+          id: notif.id,
+          title: notif.title || 'Notification',
+          message: notif.message || '',
+          time: timeAgo,
+          read: notif.is_read || false,
+          type: notif.notification_type || notif.type || 'info'
+        };
+      });
+      
+      console.log('📥 Formatted notifications:', formattedNotifications);
+      setNotifications(formattedNotifications);
+    } catch (error) {
+      console.error('❌ Error fetching notifications:', error);
+      console.error('❌ Error details:', error.message, error.stack);
+      // Keep empty array on error, don't show static notifications
+      setNotifications([]);
+    }
+  };
+
+  // Helper function to calculate time ago
+  const getTimeAgo = (date) => {
+    if (!date) return 'Just now';
+    
+    const now = new Date();
+    const past = new Date(date);
+    const diffInSeconds = Math.floor((now - past) / 1000);
+    
+    if (diffInSeconds < 60) {
+      return 'Just now';
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
+      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+    } else if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+    } else if (diffInSeconds < 604800) {
+      const days = Math.floor(diffInSeconds / 86400);
+      return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+    } else if (diffInSeconds < 2592000) {
+      const weeks = Math.floor(diffInSeconds / 604800);
+      return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+    } else {
+      const months = Math.floor(diffInSeconds / 2592000);
+      return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+    }
+  };
+
+  // Fetch notifications on component mount and when language changes
   useEffect(() => {
-    setNotifications([
-      { id: 1, title: t('notifications.newAssignment'), message: t('notifications.assignmentMessage'), time: t('notifications.hoursAgo', { count: 2 }), read: false },
-      { id: 2, title: t('notifications.progressReport'), message: t('notifications.progressMessage'), time: t('notifications.daysAgo', { count: 1 }), read: false },
-      { id: 3, title: t('notifications.parentMeeting'), message: t('notifications.meetingMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-      { id: 4, title: t('notifications.attendance'), message: t('notifications.attendanceMessage'), time: t('notifications.daysAgo', { count: 2 }), read: false },
-    ]);
-  }, [i18n.language, t]);
+    // Fetch immediately on mount
+    fetchNotifications();
+    // Refresh notifications every 30 seconds
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatTime = (date) => {
     return date.toLocaleTimeString(i18n.language, {
@@ -1978,10 +2057,24 @@ const HeaderBar = ({
     });
   };
 
-  const markNotificationAsRead = (id) => {
+  const markNotificationAsRead = async (id) => {
+    // Optimistically update UI
     setNotifications(notifications.map(notification =>
       notification.id === id ? { ...notification, read: true } : notification
     ));
+    
+    // Optionally mark as read in backend (if endpoint exists)
+    // For now, just update locally since the endpoint may not exist yet
+    // This can be enhanced later when the backend endpoint is available
+    try {
+      // Try to mark as read via API if endpoint exists
+      if (API_CONFIG.DJANGO.NOTIFICATIONS.MARK_READ) {
+        await djangoAPI.post(API_CONFIG.DJANGO.NOTIFICATIONS.MARK_READ(id));
+      }
+    } catch (error) {
+      // Silently fail - UI is already updated optimistically
+      console.log('Mark as read endpoint not available or error:', error);
+    }
   };
 
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
@@ -2176,6 +2269,10 @@ const HeaderBar = ({
                 setShowNotifications(!showNotifications);
                 setShowLanguageDropdown(false);
                 setShowProfile(false);
+                // Refresh notifications when opening dropdown
+                if (!showNotifications) {
+                  fetchNotifications();
+                }
               }}
               style={{ color: '#2D5D7B', fontSize: '1.4rem' }}
               title="Notifications"
@@ -2193,9 +2290,11 @@ const HeaderBar = ({
                   <div className="header-actions-right">
                     <button
                       className="clear-all-btn"
-                      onClick={() => setNotifications([])}
+                      onClick={() => fetchNotifications()}
+                      title="Refresh notifications"
                     >
-                      {t('clear')}
+                      <i className="bi bi-arrow-clockwise" style={{ marginRight: '4px' }}></i>
+                      {t('refresh') || 'Refresh'}
                     </button>
                     <button
                       className="close-dropdown-btn"

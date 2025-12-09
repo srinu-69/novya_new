@@ -7,7 +7,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 import sys
 
-from .models import Review, Rating, Report, StudentNotification
+from .models import Review, Rating, Report, StudentNotification, Notification
 from .serializers import (
     ReviewSerializer, RatingSerializer, ReportSerializer, StudentNotificationSerializer
 )
@@ -99,6 +99,55 @@ class ReportDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_notifications(request):
+    """
+    Get all notifications for the authenticated user (works for teachers, students, parents)
+    """
+    try:
+        user = request.user
+        print(f"📥 get_notifications called - User: {user.username}, Role: {user.role}, User ID: {user.userid}")
+        
+        # Get notifications for the current user
+        notifications = Notification.objects.filter(
+            recipient=user
+        ).order_by('-created_at')
+        
+        notification_count = notifications.count()
+        print(f"📥 Found {notification_count} notifications for user: {user.username} (ID: {user.userid})")
+        
+        # Debug: Print first few notifications
+        if notification_count > 0:
+            for notif in notifications[:3]:
+                print(f"📥   - Notification ID: {notif.id}, Title: {notif.title}, Recipient ID: {notif.recipient.userid}")
+        
+        # Serialize notifications
+        notifications_data = []
+        for notif in notifications:
+            notifications_data.append({
+                'id': notif.id,
+                'title': notif.title,
+                'message': notif.message,
+                'type': notif.notification_type,
+                'notification_type': notif.notification_type,  # Add both for compatibility
+                'is_read': notif.is_read,
+                'created_at': notif.created_at.isoformat() if notif.created_at else None,
+                'read_at': notif.read_at.isoformat() if notif.read_at else None,
+            })
+        
+        print(f"📥 Returning {len(notifications_data)} notifications")
+        return Response(notifications_data, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_notifications: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to get notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])

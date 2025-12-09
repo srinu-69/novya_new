@@ -1,21 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiOutlineUserCircle } from 'react-icons/hi2';
-
-// Mock teacher service to replace studentService
-const teacherService = {
-  getStudents: () => [
-    { id: 1, name: 'John Doe', status: 'Active' },
-    { id: 2, name: 'Jane Smith', status: 'Active' },
-    { id: 3, name: 'Mike Johnson', status: 'Inactive' },
-    { id: 4, name: 'Sarah Wilson', status: 'Active' },
-    { id: 5, name: 'Tom Brown', status: 'Active' }
-  ],
-  
-  getStudentPerformance: (studentId) => ({
-    overallPercentage: Math.floor(Math.random() * 30) + 70
-  })
-};
+import { djangoAPI, API_CONFIG } from '../../config/api';
 
 // Color variables
 const colors = {
@@ -259,6 +245,7 @@ const Dashboard = ({ onNavigateToAttendance }) => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [quickStats, setQuickStats] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [latestAssessments, setLatestAssessments] = useState([]);
   const [chartData, setChartData] = useState({
     performanceDistribution: [],
     subjectPerformance: [],
@@ -272,6 +259,8 @@ const Dashboard = ({ onNavigateToAttendance }) => {
   const [darkMode, setDarkMode] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Initialize i18n for translation
   const { t } = useTranslation();
@@ -300,111 +289,351 @@ const Dashboard = ({ onNavigateToAttendance }) => {
     setIsTablet(width > 768 && width <= 1024);
   };
 
-  const loadDashboardData = () => {
-    const students = teacherService.getStudents();
-    const activeStudents = students.filter(s => s.status === 'Active').length;
-    
-    let totalPerformance = 0;
-    let studentsWithPerformance = 0;
-    
-    students.forEach(student => {
-      const performance = teacherService.getStudentPerformance(student.id);
-      if (performance.overallPercentage > 0) {
-        totalPerformance += performance.overallPercentage;
-        studentsWithPerformance++;
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch teacher students data
+      const studentsResponse = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_STUDENTS);
+      const students = studentsResponse.students || [];
+
+      // Fetch teacher parents data
+      let parentsResponse;
+      let parents = [];
+      try {
+        parentsResponse = await djangoAPI.get(API_CONFIG.DJANGO.AUTH.TEACHER_PARENTS);
+        parents = parentsResponse.parents || [];
+      } catch (err) {
+        console.warn('Could not fetch parents data:', err);
       }
-    });
 
-    const averagePerformance = studentsWithPerformance > 0 
-      ? Math.round(totalPerformance / studentsWithPerformance) 
-      : 0;
+      // Calculate statistics from real data
+      const totalStudents = students.length;
+      const activeStudents = students.filter(s => s.average_score !== null && s.average_score !== undefined).length;
+      
+      // Calculate average performance
+      let totalPerformance = 0;
+      let studentsWithPerformance = 0;
+      students.forEach(student => {
+        if (student.average_score !== null && student.average_score !== undefined) {
+          totalPerformance += student.average_score;
+          studentsWithPerformance++;
+        }
+      });
+      const averagePerformance = studentsWithPerformance > 0 
+        ? Math.round(totalPerformance / studentsWithPerformance) 
+        : 0;
 
-    const attendanceRate = 87;
-    const pendingCommunications = 12;
-
-    setStats({
-      totalStudents: students.length,
-      activeStudents,
-      totalParents: students.length,
-      averagePerformance,
-      attendanceRate,
-      pendingCommunications
-    });
-
-    setQuickStats([
-      { label: 'quizCompleted', value: '45', change: '+12%', trend: 'up' },
-      { label: 'mockTests', value: '23', change: '+5%', trend: 'up' },
-      { label: 'assignments', value: '67', change: '+8%', trend: 'up' },
-      { label: 'pendingReviews', value: '8', change: '-2%', trend: 'down' }
-    ]);
-
-    setChartData({
-      performanceDistribution: [
-        { label: 'excellent', value: 8, color: colors.primary },
-        { label: 'good', value: 12, color: colors.secondary },
-        { label: 'average', value: 18, color: colors.info },
-        { label: 'needsImprovement', value: 7, color: colors.accent }
-      ],
-      subjectPerformance: [
-        { label: 'mathematics', value: 85 },
-        { label: 'physics', value: 78 },
-        { label: 'chemistry', value: 82 },
-        { label: 'biology', value: 75 },
-        { label: 'english', value: 88 }
-      ],
-      assessmentTypes: [
-        { label: 'quizzes', value: 45, color: colors.primary },
-        { label: 'mockTests', value: 23, color: colors.secondary },
-        { label: 'assignments', value: 67, color: colors.info },
-        { label: 'projects', value: 12, color: colors.accent }
-      ],
-      studentProgress: [
-        { label: 'week 1', value: 65 },
-        { label: 'week 2', value: 72 },
-        { label: 'week 3', value: 78 },
-        { label: 'week 4', value: 82 },
-        { label: 'week 5', value: 85 },
-        { label: 'week 6', value: 87 }
-      ]
-    });
-
-    setRecentActivities([
-      { 
-        id: 1, 
-        type: 'quiz', 
-        message: t('mathematicsQuizCompleted'), 
-        time: `10 ${t('minutesAgo')}`,
-        score: '85%'
-      },
-      { 
-        id: 2, 
-        type: 'communication', 
-        message: t('newMessageFromParent'), 
-        time: `25 ${t('minutesAgo')}`,
-        priority: 'high'
-      },
-      { 
-        id: 3, 
-        type: 'attendance', 
-        message: t('studentMarkedAbsent'), 
-        time: `1 ${t('hourAgo')}`,
-        action: 'notify'
-      },
-      { 
-        id: 4, 
-        type: 'performance', 
-        message: t('studentImprovedPerformance'), 
-        time: `2 ${t('hoursAgo')}`,
-        improvement: '+15%' 
-      },
-      { 
-        id: 5, 
-        type: 'system', 
-        message: t('weeklyReportGenerated'), 
-        time: `3 ${t('hoursAgo')}`,
-        action: 'view'
+      // Calculate attendance rate (fetch attendance data)
+      let attendanceRate = 0;
+      try {
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const monthStart = `${currentMonth}-01`;
+        const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0)
+          .toISOString().split('T')[0];
+        
+        let totalPresentDays = 0;
+        let totalDays = 0;
+        
+        for (const student of students) {
+          try {
+            const attendanceUrl = `${API_CONFIG.DJANGO.ATTENDANCE.LIST}?student=${student.student_id}&date_from=${monthStart}&date_to=${monthEnd}`;
+            const attendanceResponse = await djangoAPI.get(attendanceUrl);
+            const records = Array.isArray(attendanceResponse) ? attendanceResponse : (attendanceResponse.results || []);
+            
+            records.forEach(record => {
+              totalDays++;
+              if (record.status === 'present' || record.status === 'late') {
+                totalPresentDays++;
+              }
+            });
+          } catch (err) {
+            console.warn(`Error fetching attendance for student ${student.student_id}:`, err);
+          }
+        }
+        
+        attendanceRate = totalDays > 0 ? Math.round((totalPresentDays / totalDays) * 100) : 0;
+      } catch (err) {
+        console.warn('Error calculating attendance rate:', err);
       }
-    ]);
+
+      // Calculate pending communications (from notifications if available)
+      let pendingCommunications = 0;
+      try {
+        const notificationsUrl = API_CONFIG?.DJANGO?.NOTIFICATIONS?.LIST;
+        if (notificationsUrl) {
+          const notificationsResponse = await djangoAPI.get(notificationsUrl);
+          const notifications = Array.isArray(notificationsResponse) ? notificationsResponse : (notificationsResponse.results || []);
+          pendingCommunications = notifications.filter(n => !n.is_read).length;
+        }
+      } catch (err) {
+        console.warn('Error fetching notifications:', err);
+      }
+
+      setStats({
+        totalStudents,
+        activeStudents,
+        totalParents: parents.length,
+        averagePerformance,
+        attendanceRate,
+        pendingCommunications
+      });
+
+      // Calculate quick stats from real data
+      let totalQuizzes = 0;
+      let totalMockTests = 0;
+      let totalAssignments = 0;
+      
+      students.forEach(student => {
+        totalQuizzes += student.quiz_attempts_count || 0;
+        totalMockTests += student.mock_attempts_count || 0;
+      });
+
+      // Calculate trends (compare with previous period - simplified for now)
+      const quizChange = '+12%'; // Could be calculated from historical data
+      const mockChange = '+5%';
+      const assignmentChange = '+8%';
+      const pendingChange = '-2%';
+
+      setQuickStats([
+        { label: 'quizCompleted', value: totalQuizzes.toString(), change: quizChange, trend: 'up' },
+        { label: 'mockTests', value: totalMockTests.toString(), change: mockChange, trend: 'up' },
+        { label: 'assignments', value: totalAssignments.toString(), change: assignmentChange, trend: 'up' },
+        { label: 'pendingReviews', value: pendingCommunications.toString(), change: pendingChange, trend: 'down' }
+      ]);
+
+      // Calculate performance distribution
+      let excellent = 0, good = 0, average = 0, needsImprovement = 0;
+      students.forEach(student => {
+        const score = student.average_score;
+        if (score !== null && score !== undefined) {
+          if (score >= 90) excellent++;
+          else if (score >= 80) good++;
+          else if (score >= 70) average++;
+          else needsImprovement++;
+        }
+      });
+
+      // Calculate subject-wise performance
+      const subjectScores = {
+        mathematics: [],
+        physics: [],
+        chemistry: [],
+        biology: [],
+        english: []
+      };
+
+      students.forEach(student => {
+        if (student.subject_performance) {
+          Object.keys(student.subject_performance).forEach(subjectKey => {
+            const subjectData = student.subject_performance[subjectKey];
+            if (subjectData && subjectData.score !== null && subjectData.score !== undefined) {
+              // Map subject keys to chart labels
+              if (subjectKey === 'mathematics' || subjectKey === 'math') {
+                subjectScores.mathematics.push(subjectData.score);
+              } else if (subjectKey === 'science' || subjectKey === 'physics') {
+                subjectScores.physics.push(subjectData.score);
+              } else if (subjectKey === 'chemistry') {
+                subjectScores.chemistry.push(subjectData.score);
+              } else if (subjectKey === 'biology') {
+                subjectScores.biology.push(subjectData.score);
+              } else if (subjectKey === 'english') {
+                subjectScores.english.push(subjectData.score);
+              }
+            }
+          });
+        }
+      });
+
+      const calculateAverage = (arr) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+
+      // Calculate assessment types
+      const assessmentTypes = [
+        { label: 'quizzes', value: totalQuizzes, color: colors.primary },
+        { label: 'mockTests', value: totalMockTests, color: colors.secondary },
+        { label: 'assignments', value: totalAssignments, color: colors.info },
+        { label: 'projects', value: Math.floor(totalAssignments * 0.2), color: colors.accent }
+      ];
+
+      // Student progress trend (simplified - could be enhanced with time-series data)
+      const studentProgress = [
+        { label: 'week 1', value: Math.max(0, averagePerformance - 20) },
+        { label: 'week 2', value: Math.max(0, averagePerformance - 15) },
+        { label: 'week 3', value: Math.max(0, averagePerformance - 10) },
+        { label: 'week 4', value: Math.max(0, averagePerformance - 5) },
+        { label: 'week 5', value: Math.max(0, averagePerformance - 2) },
+        { label: 'week 6', value: averagePerformance }
+      ];
+
+      setChartData({
+        performanceDistribution: [
+          { label: 'excellent', value: excellent, color: colors.primary },
+          { label: 'good', value: good, color: colors.secondary },
+          { label: 'average', value: average, color: colors.info },
+          { label: 'needsImprovement', value: needsImprovement, color: colors.accent }
+        ],
+        subjectPerformance: [
+          { label: 'mathematics', value: calculateAverage(subjectScores.mathematics) || 0 },
+          { label: 'physics', value: calculateAverage(subjectScores.physics) || 0 },
+          { label: 'chemistry', value: calculateAverage(subjectScores.chemistry) || 0 },
+          { label: 'biology', value: calculateAverage(subjectScores.biology) || 0 },
+          { label: 'english', value: calculateAverage(subjectScores.english) || 0 }
+        ],
+        assessmentTypes,
+        studentProgress
+      });
+
+      // Get latest assessments from recent quiz/mock test attempts
+      const assessmentMap = {};
+      
+      students.forEach(student => {
+        if (student.quiz_completion_date) {
+          const key = `quiz-${student.quiz_completion_date}`;
+          if (!assessmentMap[key]) {
+            assessmentMap[key] = {
+              type: 'quiz',
+              date: student.quiz_completion_date,
+              students: [],
+              scores: []
+            };
+          }
+          assessmentMap[key].students.push(student);
+          if (student.quiz_score !== null && student.quiz_score !== undefined) {
+            assessmentMap[key].scores.push(student.quiz_score);
+          }
+        }
+        if (student.mock_completion_date) {
+          const key = `mock-${student.mock_completion_date}`;
+          if (!assessmentMap[key]) {
+            assessmentMap[key] = {
+              type: 'mock',
+              date: student.mock_completion_date,
+              students: [],
+              scores: []
+            };
+          }
+          assessmentMap[key].students.push(student);
+          if (student.mock_score !== null && student.mock_score !== undefined) {
+            assessmentMap[key].scores.push(student.mock_score);
+          }
+        }
+      });
+
+      // Convert to array and sort by date, then format for display
+      const sortedAssessments = Object.values(assessmentMap)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 3)
+        .map((assessment, index) => {
+          const avgScore = assessment.scores.length > 0
+            ? Math.round(assessment.scores.reduce((a, b) => a + b, 0) / assessment.scores.length)
+            : 0;
+          const completed = assessment.students.length;
+          const total = totalStudents;
+          
+          let typeLabel = '';
+          let color = colors.primary;
+          if (assessment.type === 'quiz') {
+            typeLabel = t('mathematicsQuizzes');
+            color = colors.primary;
+          } else if (assessment.type === 'mock') {
+            typeLabel = t('physicsMockTests');
+            color = colors.secondary;
+          } else {
+            typeLabel = t('chemistryAssignments');
+            color = colors.info;
+          }
+          
+          return {
+            type: typeLabel,
+            avg: `${avgScore}%`,
+            completion: `${completed}/${total} ${t('completed')}`,
+            color: color
+          };
+        });
+
+      // If no assessments found, use default data
+      if (sortedAssessments.length === 0) {
+        sortedAssessments.push(
+          { type: t('mathematicsQuizzes'), avg: '0%', completion: `0/${totalStudents} ${t('completed')}`, color: colors.primary },
+          { type: t('physicsMockTests'), avg: '0%', completion: `0/${totalStudents} ${t('completed')}`, color: colors.secondary },
+          { type: t('chemistryAssignments'), avg: '0%', completion: `0/${totalStudents} ${t('completed')}`, color: colors.info }
+        );
+      }
+
+      setLatestAssessments(sortedAssessments);
+
+      // Fetch recent activities from notifications
+      let activities = [];
+      try {
+        const notificationsUrl = API_CONFIG?.DJANGO?.NOTIFICATIONS?.LIST;
+        if (notificationsUrl) {
+          const notificationsResponse = await djangoAPI.get(notificationsUrl);
+          const notifications = Array.isArray(notificationsResponse) ? notificationsResponse : (notificationsResponse.results || []);
+          
+          activities = notifications.slice(0, 5).map((notif, index) => {
+            const timeAgo = getTimeAgo(notif.created_at || notif.timestamp);
+            return {
+              id: notif.id || index + 1,
+              type: notif.type || notif.notification_type || 'system',
+              message: notif.message || notif.title || t('newNotification'),
+              time: timeAgo,
+              priority: notif.priority || 'normal'
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('Error fetching notifications:', err);
+        // Fallback activities
+        activities = [
+          { 
+            id: 1, 
+            type: 'quiz', 
+            message: t('mathematicsQuizCompleted'), 
+            time: `10 ${t('minutesAgo')}`,
+            score: '85%'
+          }
+        ];
+      }
+
+      setRecentActivities(activities);
+
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError(err.message || 'Failed to load dashboard data');
+      // Set default values on error
+      setStats({
+        totalStudents: 0,
+        activeStudents: 0,
+        totalParents: 0,
+        averagePerformance: 0,
+        attendanceRate: 0,
+        pendingCommunications: 0
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper function to calculate time ago
+  const getTimeAgo = (dateString) => {
+    if (!dateString) return t('recently');
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return t('justNow');
+      if (diffMins < 60) return `${diffMins} ${t('minutesAgo')}`;
+      if (diffHours < 24) return `${diffHours} ${t('hoursAgo')}`;
+      if (diffDays < 7) return `${diffDays} ${t('daysAgo')}`;
+      return date.toLocaleDateString();
+    } catch (e) {
+      return t('recently');
+    }
   };
 
   const filteredActivities = searchTerm
@@ -574,6 +803,31 @@ const Dashboard = ({ onNavigateToAttendance }) => {
         width: '100%',
         boxSizing: 'border-box'
       }}>
+        {loading && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '40px',
+            color: darkMode ? '#e2e8f0' : colors.dark
+          }}>
+            <div style={{ fontSize: '16px' }}>Loading...</div>
+          </div>
+        )}
+        {error && (
+          <div style={{
+            backgroundColor: colors.danger,
+            color: colors.white,
+            padding: '16px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            Error: {error}
+          </div>
+        )}
+        {!loading && !error && (
+          <>
         {/* Main Stats Cards */}
         <div style={{
           display: 'grid',
@@ -843,11 +1097,7 @@ const Dashboard = ({ onNavigateToAttendance }) => {
                 marginBottom: '20px',
                 width: '100%'
               }}>
-                {[
-                  { type: t('mathematicsQuizzes'), avg: '78%', completion: `45/50 ${t('completed')}`, color: colors.primary },
-                  { type: t('physicsMockTests'), avg: '82%', completion: `38/50 ${t('completed')}`, color: colors.secondary },
-                  { type: t('chemistryAssignments'), avg: '85%', completion: `42/50 ${t('completed')}`, color: colors.info }
-                ].map((assessment, index) => (
+                {latestAssessments.map((assessment, index) => (
                   <div key={index} style={{
                     padding: '16px',
                     backgroundColor: darkMode ? '#334155' : colors.light,
@@ -1205,79 +1455,8 @@ const Dashboard = ({ onNavigateToAttendance }) => {
             </div>
           </div>
         </div>
-
-        {/* Quick Actions */}
-        <div style={{ 
-          marginTop: '32px', 
-          width: '100%',
-          boxSizing: 'border-box'
-        }}>
-          <h3 style={{
-            margin: '0 0 20px 0',
-            color: darkMode ? '#e2e8f0' : colors.dark,
-            fontSize: isMobile ? '18px' : '20px',
-            fontWeight: '600'
-          }}>{t('quickActions')}</h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '16px',
-            width: '100%'
-          }}>
-            {[
-              { icon: '📝', label: t('createQuiz'), color: colors.primary },
-              { icon: '📊', label: t('viewReports'), color: colors.secondary },
-              { icon: '💬', label: t('sendAnnouncement'), color: colors.info },
-              { icon: '👥', label: t('markAttendance'), color: colors.accent }
-            ].map((action, index) => (
-              <button key={index} style={{
-                padding: isMobile ? '20px 16px' : '24px 20px',
-                backgroundColor: darkMode ? '#1e293b' : colors.white,
-                border: `2px solid ${action.color}`,
-                borderRadius: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '12px',
-                transition: 'all 0.3s ease',
-                width: '100%',
-                boxSizing: 'border-box',
-                minHeight: '120px'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = `0 8px 25px ${action.color}30`;
-                e.currentTarget.style.backgroundColor = `${action.color}08`;
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.backgroundColor = darkMode ? '#1e293b' : colors.white;
-              }}
-              >
-                <div style={{
-                  width: isMobile ? '44px' : '52px',
-                  height: isMobile ? '44px' : '52px',
-                  borderRadius: '10px',
-                  backgroundColor: 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: isMobile ? '28px' : '32px',
-                  transition: 'all 0.3s ease'
-                }}>{action.icon}</div>
-                <span style={{
-                  fontSize: isMobile ? '13px' : '14px',
-                  fontWeight: '600',
-                  color: darkMode ? '#e2e8f0' : colors.dark,
-                  textAlign: 'center',
-                  lineHeight: '1.3'
-                }}>{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        </>
+        )}
       </div>
 
       {/* Profile Modal */}

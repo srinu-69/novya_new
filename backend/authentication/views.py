@@ -3084,6 +3084,147 @@ def send_parent_feedback_to_student(request):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+def send_parent_feedback_to_teacher(request):
+    """
+    Parent sends feedback/notification to the teacher of their linked child (student)
+    Creates a notification in notifications table for the teacher
+    """
+    try:
+        user = request.user
+        print(f"🔍 send_parent_feedback_to_teacher called by user: {user.username}, role: {user.role}")
+        
+        # Check if user is a parent
+        if user.role != 'Parent':
+            return Response({
+                'error': 'Access denied. Only parent users can send feedback to teachers.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get child email and feedback message
+        child_email = request.data.get('child_email')
+        feedback_message = request.data.get('message', '').strip()
+        feedback_title = request.data.get('title', 'Feedback from Parent')
+        
+        if not child_email:
+            return Response({
+                'error': 'child_email is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not feedback_message:
+            return Response({
+                'error': 'Feedback message is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get student registration by email
+        try:
+            student_reg = StudentRegistration.objects.get(student_email__iexact=child_email)
+        except StudentRegistration.DoesNotExist:
+            return Response({
+                'error': 'Student not found for the provided child email.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify parent-child relationship
+        if student_reg.parent_email.lower() != user.email.lower():
+            return Response({
+                'error': 'Access denied. This student is not linked to your parent account.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get student's school from StudentProfile
+        from authentication.models import StudentProfile
+        try:
+            student_profile = StudentProfile.objects.get(student_id=student_reg.student_id)
+            student_school = student_profile.school
+            if student_school:
+                student_school = student_school.strip()
+        except StudentProfile.DoesNotExist:
+            return Response({
+                'error': 'Student profile not found. Cannot determine teacher.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if not student_school or student_school == '':
+            return Response({
+                'error': 'Student school not found. Cannot determine teacher.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Find teacher from the same school
+        from authentication.models import TeacherProfile, TeacherRegistration
+        try:
+            # Get teacher profile with matching school
+            teacher_profiles = TeacherProfile.objects.filter(school__iexact=student_school)
+            if not teacher_profiles.exists():
+                return Response({
+                    'error': f'No teacher found for school: {student_school}'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Get the first teacher (or could be enhanced to find specific teacher)
+            teacher_profile = teacher_profiles.first()
+            teacher_reg = TeacherRegistration.objects.get(teacher_id=teacher_profile.teacher_id)
+            
+            # Get teacher's User account
+            try:
+                teacher_user = User.objects.get(username=teacher_reg.teacher_username, role='Teacher')
+                print(f"✅ Found teacher user: {teacher_user.username}, User ID: {teacher_user.userid}, Email: {teacher_user.email}")
+            except User.DoesNotExist:
+                print(f"❌ Teacher user not found for username: {teacher_reg.teacher_username}")
+                return Response({
+                    'error': 'Teacher user account not found.'
+                }, status=status.HTTP_404_NOT_FOUND)
+            except User.MultipleObjectsReturned:
+                teacher_user = User.objects.filter(username=teacher_reg.teacher_username, role='Teacher').first()
+                print(f"⚠️ Multiple teacher users found, using first: {teacher_user.username}, User ID: {teacher_user.userid}")
+            
+            # Create notification for teacher
+            from notifications.models import Notification
+            from django.utils import timezone
+            
+            # Get parent name for the notification message
+            parent_name = user.firstname or user.username or 'Parent'
+            full_message = f"Feedback from {parent_name} (Parent of {student_reg.first_name} {student_reg.last_name}):\n\n{feedback_message}"
+            
+            notification = Notification.objects.create(
+                recipient=teacher_user,
+                title=feedback_title,
+                message=full_message,
+                notification_type='info',
+                is_read=False,
+                created_at=timezone.now()
+            )
+            
+            # Verify notification was created
+            print(f"✅ Created notification ID: {notification.id} for teacher {teacher_user.username} (User ID: {teacher_user.userid}) from parent {user.email}")
+            print(f"✅ Notification recipient_id: {notification.recipient.userid}, title: {notification.title}")
+            
+            # Verify it exists in database
+            verify_notif = Notification.objects.filter(id=notification.id, recipient=teacher_user).first()
+            if verify_notif:
+                print(f"✅ Verified notification exists in database")
+            else:
+                print(f"❌ WARNING: Notification not found in database after creation!")
+            
+            return Response({
+                'message': 'Feedback sent successfully to teacher',
+                'notification_id': notification.id,
+                'teacher_name': teacher_user.firstname or teacher_user.username
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as teacher_error:
+            print(f"❌ Error finding teacher: {teacher_error}")
+            import traceback
+            print(traceback.format_exc())
+            return Response({
+                'error': f'Failed to find teacher: {str(teacher_error)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in send_parent_feedback_to_teacher: {e}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to send feedback: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def send_parent_message(request):
     """
     Teacher sends a message to a parent about a specific student
