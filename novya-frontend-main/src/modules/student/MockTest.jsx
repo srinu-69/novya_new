@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import html2canvas from "html2canvas";
 import { API_CONFIG, fastAPI } from "../../config/api";
+import VoiceControlMockTest from "./VoiceControl/VoiceControlMockTest";
 
 
 function MockTest() {
@@ -1982,6 +1983,79 @@ Provide only the hint text, no extra formatting.`;
           </div>
         </div>
       )}
+
+      {/* Voice Control for MockTest */}
+      <VoiceControlMockTest
+        navigate={navigate}
+        currentPage={
+          !selectedClass ? "class_selection" : 
+          (!selectedSubject ? "subject_selection" : 
+          (!selectedChapter ? "chapter_selection" : "quiz"))
+        }
+        selectedClass={selectedClass}
+        selectedSubject={selectedSubject}
+        selectedChapter={selectedChapter}
+        currentQuestion={currentQ}
+        totalQuestions={quiz.length}
+        quizStarted={!!selectedChapter && quiz.length > 0 && !isFinished}
+        timeLeft={timeLeft}
+        onSelectClass={(className) => setSelectedClass(className)}
+        onSelectSubject={(subject) => setSelectedSubject(subject)}
+        onSelectChapter={(chapter) => setSelectedChapter(chapter)}
+        onStartQuiz={() => {
+          if (selectedChapter && quiz.length > 0) {
+            // Quiz already started
+          }
+        }}
+        onNextQuestion={() => {
+          if (currentQ < quiz.length - 1) {
+            setCurrentQ(currentQ + 1);
+            setSelected(null);
+          }
+        }}
+        onPreviousQuestion={() => {
+          if (currentQ > 0) {
+            setCurrentQ(currentQ - 1);
+            setSelected(userAnswers[currentQ - 1] || null);
+          }
+        }}
+        onAnswerQuestion={(index) => {
+          if (!showAnswer && quiz[currentQ]) {
+            setSelected(index);
+            const newAnswers = [...userAnswers];
+            newAnswers[currentQ] = index;
+            setUserAnswers(newAnswers);
+            if (index === quiz[currentQ].answer) {
+              setScore(score + 1);
+            }
+          }
+        }}
+        onSkipQuestion={() => {
+          if (currentQ < quiz.length - 1) {
+            setCurrentQ(currentQ + 1);
+            setSelected(null);
+            setSkippedQuestions([...skippedQuestions, currentQ]);
+          }
+        }}
+        onFinishQuiz={() => {
+          if (!isFinished) {
+            setIsFinished(true);
+          }
+        }}
+        onBack={() => {
+          if (selectedChapter) {
+            setSelectedChapter(null);
+          } else if (selectedSubject) {
+            setSelectedSubject(null);
+          } else if (selectedClass) {
+            setSelectedClass(null);
+          }
+        }}
+        availableClasses={classes}
+        availableSubjects={subjects}
+        availableChapters={chapters}
+        currentOptions={quiz[currentQ]?.options || []}
+      />
     </>
   );
 }

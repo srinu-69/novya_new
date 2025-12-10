@@ -15,6 +15,7 @@ import {
   List,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import VoiceControlLearn from './VoiceControl/VoiceControlLearn';
 
 const Learn = () => {
   const location = useLocation();
@@ -1342,6 +1343,19 @@ const allChapters = {
 </div>
             </div>
                         </div>
+
+      {/* Voice Control for Classroom Navigation */}
+      <VoiceControlLearn
+        subjects={subjects}
+        selectedSubject={selectedSubject}
+        chapters={currentChapters}
+        subtopics={subtopics}
+        navigate={navigate}
+        onSubjectChange={handleSubjectClick}
+        onChapterExpand={toggleChapterExpansion}
+        onSubtopicOpen={handleSubtopicClick}
+        currentClass={currentClass}
+      />
 
     </div>
   );

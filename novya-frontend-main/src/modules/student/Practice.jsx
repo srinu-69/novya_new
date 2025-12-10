@@ -1,10 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Users, FileText } from 'lucide-react';
 import { Wheel } from 'react-custom-roulette';
 import { addCoinsForSpinWheel } from '../../utils/coinTracking';
 import './practice.css';
+import VoiceControlPractice from './VoiceControl/VoiceControlPractice';
+import VoiceControlSpinWheel from './VoiceControl/VoiceControlSpinWheel';
 
 // Flying Reward Component
 const FlyingReward = ({ reward, onComplete }) => {
@@ -105,6 +108,7 @@ const addRewardPointsWithHistory = (points, reason, source = 'spin_wheel') => {
 // Spin Wheel Component with full internationalization
 const SpinWheel = ({ onRewardWon }) => {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [mustSpin, setMustSpin] = useState(false);
   const [prizeNumber, setPrizeNumber] = useState(0);
   const [reward, setReward] = useState(null);
@@ -428,6 +432,14 @@ const SpinWheel = ({ onRewardWon }) => {
         }} />
       </div>
 
+      {/* Voice Control for Spin Wheel */}
+      <VoiceControlSpinWheel
+        navigate={navigate}
+        onSpin={handleSpinClick}
+        spinsLeft={spinsLeft}
+        isSpinning={mustSpin}
+      />
+
       {/* Spin Button */}
       <button
         onClick={handleSpinClick}
@@ -567,6 +579,14 @@ const SpinWheel = ({ onRewardWon }) => {
           </div>
         </div>
       )}
+
+      {/* Voice Control for Spin Wheel */}
+      <VoiceControlSpinWheel
+        navigate={navigate}
+        onSpin={handleSpinClick}
+        spinsLeft={spinsLeft}
+        isSpinning={mustSpin}
+      />
     </div>
   );
 };
@@ -574,6 +594,7 @@ const SpinWheel = ({ onRewardWon }) => {
 // Main Practice Component with Enhanced Mobile Responsiveness
 const Practice = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [animatedStats, setAnimatedStats] = useState({
     totalTests: 0,
     studentsEnrolled: 0
@@ -1348,6 +1369,23 @@ const Practice = () => {
           </p>
         </div>
       </section>
+
+      {/* Voice Control for Practice Page */}
+      <VoiceControlPractice
+        navigate={navigate}
+        currentPage="spinwheel"
+        onNavigateToPage={(page) => {
+          if (page === "quickpractice") {
+            navigate("/quiz");
+          } else if (page === "mocktest") {
+            navigate("/mocktest");
+          } else if (page === "spinwheel") {
+            navigate("/practice");
+          } else if (page === "typingmaster") {
+            navigate("/typing-master");
+          }
+        }}
+      />
     </div>
   );
 };

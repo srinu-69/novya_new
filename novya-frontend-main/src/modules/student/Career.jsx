@@ -5,13 +5,16 @@ import {
   Bookmark, Award, Code, Music, Palette, Mic
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import './career.css';
 import { useQuiz } from './QuizContext';
 import Navbar from './Navbarrr';
 import { getStudentPerformance, getQuizStatistics, getRecentQuizAttempts } from '../../utils/quizTracking';
+import VoiceControlCareer from './VoiceControl/VoiceControlCareer';
  
 const Career = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   
   // Get quiz context with fallback values
   const quizContext = useQuiz();
@@ -1042,6 +1045,20 @@ const Career = () => {
           </div>
         </div>
       )}
+
+      {/* Voice Control for Career Page */}
+      <VoiceControlCareer
+        navigate={navigate}
+        onShowDetails={(details) => {
+          const category = performanceMetrics.find(cat => cat.id === details.id);
+          if (category) {
+            openDetails(category);
+          }
+        }}
+        onCloseDetails={closeDetails}
+        currentSection={typeof showDetails !== 'undefined' ? showDetails?.id : null}
+        availableSections={performanceMetrics.map(cat => cat.id)}
+      />
     </div>
   );
 };

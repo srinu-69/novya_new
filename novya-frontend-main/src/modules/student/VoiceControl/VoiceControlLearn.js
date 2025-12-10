@@ -7,12 +7,14 @@ const VoiceControlLearn = ({
   subjects = [],
   selectedSubject,
   chapters = [],
+  subtopics = {},
   todayAgenda,
   navigate,
   onSubjectChange,
   onChapterExpand,
   onSubtopicOpen,
-  onStartTask
+  onStartTask,
+  currentClass = '7'
 }) => {
   const recognitionRef = useRef(null);
   const [listening, setListening] = useState(false);
@@ -195,7 +197,7 @@ const VoiceControlLearn = ({
         const chapter = chapters.find((c) => c.number === num);
         if (chapter) {
           navigate(
-            `/lesson/class7/${selectedSubject}/${num}?chapterTitle=${chapter.title}`
+            `/lesson/class${currentClass}/${selectedSubject}/${num}?chapterTitle=${chapter.title}`
           );
         }
       }
@@ -223,14 +225,20 @@ const VoiceControlLearn = ({
       const chapterObj = chapters.find((c) => c.number === activeChapter);
       if (!chapterObj) return;
 
-      const subtopicName =
-        chapterObj.subtopics?.[subIndex] || `Subtopic ${num}`;
+      // Get subtopics from the subtopics prop (structured as subtopics[class][subject][chapter])
+      const chapterSubtopics = subtopics?.[currentClass]?.[selectedSubject]?.[activeChapter] || [];
+      const subtopicName = chapterSubtopics[subIndex] || `Subtopic ${num}`;
 
-      navigate(
-        `/lesson/class7/${selectedSubject}/${chapterObj.number}?chapterTitle=${chapterObj.title}&subtopic=${encodeURIComponent(
-          subtopicName
-        )}`
-      );
+      // Use the callback if provided, otherwise navigate directly
+      if (onSubtopicOpen) {
+        onSubtopicOpen(activeChapter, subIndex, chapterObj.title, subtopicName);
+      } else {
+        navigate(
+          `/lesson/class${currentClass}/${selectedSubject}/${chapterObj.number}?chapterTitle=${chapterObj.title}&subtopic=${encodeURIComponent(
+            subtopicName
+          )}`
+        );
+      }
     }
 
     // -------------------------------------------------------------------

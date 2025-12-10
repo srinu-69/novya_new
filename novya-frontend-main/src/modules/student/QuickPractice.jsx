@@ -5,6 +5,7 @@
 
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import QuizGrade from "./QuizGrade";
 import QuizSubject from "./QuizSubject";
 import QuizQuestion from "./QuizQuestion";
@@ -13,6 +14,7 @@ import { useQuiz } from "./QuizContext";
 import { useTranslation } from "react-i18next";
 import { API_CONFIG, fastAPI } from "../../config/api";
 import "./Quiz.css";
+import VoiceControlQuickPractice from "./VoiceControl/VoiceControlQuickPractice";
 
 function Quiz() {
   const { 
@@ -27,6 +29,7 @@ function Quiz() {
   } = useQuiz();
   
   const { t } = useTranslation();
+  const navigate = useNavigate();
   
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -445,6 +448,51 @@ function Quiz() {
           rewardPoints={rewardPoints}
         />
       )}
+
+      {/* Voice Control for QuickPractice */}
+      <VoiceControlQuickPractice
+        navigate={navigate}
+        currentPage={!selectedClass ? "class_selection" : (!selectedSubtopic ? "subject_selection" : "quiz")}
+        selectedClass={selectedClass}
+        selectedSubject={selectedSubject}
+        currentQuestion={currentQ}
+        totalQuestions={quiz.length}
+        quizStarted={!!selectedSubtopic && quiz.length > 0}
+        onSelectClass={handleClassClick}
+        onSelectSubject={handleSubjectClick}
+        onStartQuiz={() => {
+          if (selectedSubtopic && quiz.length > 0) {
+            // Quiz already started
+          }
+        }}
+        onNextQuestion={nextQuestion}
+        onPreviousQuestion={prevQuestion}
+        onAnswerQuestion={(index) => {
+          if (!showAnswer && quiz[currentQ]) {
+            handleAnswer(index);
+          }
+        }}
+        onFinishQuiz={() => {
+          if (isFinished) {
+            // Already finished
+          } else {
+            setIsFinished(true);
+          }
+        }}
+        onBack={() => {
+          if (selectedSubtopic) {
+            backToChapters();
+          } else if (selectedSubject) {
+            setSelectedSubject(null);
+            setSelectedSubtopic(null);
+          } else if (selectedClass) {
+            setSelectedClass(null);
+          }
+        }}
+        availableClasses={classes}
+        availableSubjects={subjects}
+        currentOptions={quiz[currentQ]?.options || []}
+      />
     </>
   );
 }
