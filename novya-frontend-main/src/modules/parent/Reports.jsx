@@ -10,14 +10,6 @@ const Reports = () => {
   const [exporting, setExporting] = useState(false);
   const containerRef = useRef(null);
 
-  // Calendar state
-  const nowRaw = new Date();
-  const today = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate()); // normalize to midnight
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [dayModalOpen, setDayModalOpen] = useState(false);
-
   // Exams selection index (safe default 0)
   const [selectedExamIndex, setSelectedExamIndex] = useState(0);
 
@@ -310,87 +302,13 @@ const Reports = () => {
     }
   };
 
-  // Calendar helpers
-  const buildMonthMatrix = (year, month) => {
-    const first = new Date(year, month, 1);
-    const last = new Date(year, month + 1, 0);
-    const firstWeekday = first.getDay();
-    const totalDays = last.getDate();
-
-    const rows = [];
-    let week = new Array(7).fill(null);
-    let dayIndex = 1;
-
-    for (let i = 0; i < 7; i++) {
-      if (i >= firstWeekday) {
-        week[i] = new Date(year, month, dayIndex++);
-      }
-    }
-
-    rows.push(week);
-
-    while (dayIndex <= totalDays) {
-      week = new Array(7).fill(null);
-      for (let i = 0; i < 7 && dayIndex <= totalDays; i++) {
-        week[i] = new Date(year, month, dayIndex++);
-      }
-      rows.push(week);
-    }
-
-    return rows;
-  };
-
-  const monthName = (m) =>
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m];
-
-  const goPrevMonth = () => {
-    const prev = new Date(viewYear, viewMonth - 1, 1);
-    setViewYear(prev.getFullYear());
-    setViewMonth(prev.getMonth());
-  };
-
-  const goNextMonth = () => {
-    const nxt = new Date(viewYear, viewMonth + 1, 1);
-    setViewYear(nxt.getFullYear());
-    setViewMonth(nxt.getMonth());
-  };
-
-  const jumpToToday = () => {
-    setViewYear(today.getFullYear());
-    setViewMonth(today.getMonth());
-  };
-
-  // recordFor returns records for dates up to today (no future data)
-  const recordFor = (d) => {
-    if (!d) return null;
-
-    const key = formatKey(d);
-    const r = data.dailyRecords?.[key] || null;
-    const dNorm = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-    return dNorm <= today ? r : null;
-  };
-
-  const formatKey = (d) => {
-    const y = d.getFullYear();
-    const m = `${d.getMonth() + 1}`.padStart(2, "0");
-    const dd = `${d.getDate()}`.padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  };
-
-  function sameDate(a, b) {
-    return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-  }
-
-  const monthMatrix = buildMonthMatrix(viewYear, viewMonth);
-
   return (
     <div style={S.pageWrap} ref={containerRef}>
       {/* Header */}
       <div style={S.header}>
         <div>
           <h1 style={S.heading}>Student Insights — Marks & Activities</h1>
-          <div style={S.subtitle}>Exams shown with marks. Sports, Weekly Goals, Calendar + day details included.</div>
+          <div style={S.subtitle}>Exams shown with marks. Sports, Weekly Goals included.</div>
         </div>
         <div style={S.headerActions}>
           <button style={{ ...S.btn, ...S.exportBtn }} onClick={handleExportPDF} disabled={exporting}>
@@ -492,59 +410,6 @@ const Reports = () => {
 
         {/* RIGHT COLUMN */}
         <div style={S.rightCol}>
-          {/* Calendar */}
-          <Glass style={{ marginTop: 16 }}>
-            <div style={S.cardHeader}>
-              <h3 style={S.cardTitle}>Calendar</h3>
-              <div style={S.cardSmallMeta}>Click any day to view details</div>
-            </div>
-            <div style={S.calNav}>
-              <button style={S.navBtn} onClick={goPrevMonth}>‹</button>
-              <strong>{monthName(viewMonth)} {viewYear}</strong>
-              <button style={S.navBtn} onClick={goNextMonth}>›</button>
-              <button style={{ ...S.navBtn, marginLeft: 10 }} onClick={jumpToToday}>Today</button>
-            </div>
-            <div style={S.calendarGrid}>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d} style={S.calendarHeader}>{d}</div>
-              ))}
-
-              {monthMatrix.map((week, wi) =>
-                week.map((dateObj, di) => {
-                  const key = dateObj ? formatKey(dateObj) : `null-${wi}-${di}`;
-                  const rec = dateObj ? recordFor(dateObj) : null; // returns null for future dates
-                  const isToday = dateObj && sameDate(dateObj, today);
-
-                  return (
-                    <div
-                      key={key}
-                      style={{
-                        ...S.calendarCell,
-                        border: isToday ? "2px solid #2D5D7B" : "1px solid rgba(15,20,25,0.03)",
-                        background: rec ? "#fff" : "transparent",
-                        cursor: dateObj ? (dateObj <= today ? "pointer" : "default") : "default",
-                      }}
-                      onClick={() => {
-                        if (dateObj && dateObj <= today) {
-                          setSelectedDate(dateObj);
-                          setDayModalOpen(true);
-                        }
-                      }}
-                      title={dateObj ? (rec ? `${rec.attendance} • ${rec.performance}%` : dateObj.toDateString()) : ""}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ fontSize: 13, color: dateObj ? "#17202A" : "#c4c8cc" }}>{dateObj ? dateObj.getDate() : ""}</div>
-                        {rec && <div style={S.dot(rec.performance)} />}
-                      </div>
-                      {rec && <div style={{ marginTop: 8, fontSize: 11, color: "#54606a" }}>{rec.performance}%</div>}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: "#6b7882" }}>Click any past day (up to today) to view details. Future days show no data.</div>
-          </Glass>
-
           {/* Teacher feedback */}
           <Glass style={{ marginTop: 16 }}>
             <div style={S.cardHeader}>
@@ -563,70 +428,6 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Day details modal */}
-      {dayModalOpen && selectedDate && (
-        <div style={S.modalOverlay} onClick={() => setDayModalOpen(false)}>
-          <div style={S.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h3 style={{ margin: 0 }}>{selectedDate.toDateString()}</h3>
-                <div style={{ color: "#6b7882", fontSize: 13 }}>Details for the day</div>
-              </div>
-              <div>
-                <button style={S.smallBtn} onClick={() => setDayModalOpen(false)}>Close</button>
-              </div>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              {(() => {
-                const rec = recordFor(selectedDate);
-                if (!rec) return <div style={{ padding: 12, color: "#6b7882" }}>No data available for this date.</div>;
-
-                return (
-                  <div>
-                    <div style={{ display: "flex", gap: 20, marginBottom: 12 }}>
-                      <div style={{ minWidth: 140 }}>
-                        <div style={{ color: "#5b6b7a", fontSize: 13 }}>Attendance</div>
-                        <div style={{ fontWeight: 800, fontSize: 18 }}>{rec.attendance}</div>
-                      </div>
-                      <div style={{ minWidth: 140 }}>
-                        <div style={{ color: "#5b6b7a", fontSize: 13 }}>Performance</div>
-                        <div style={{ fontWeight: 800, fontSize: 18 }}>{rec.performance}%</div>
-                      </div>
-                      <div style={{ minWidth: 140 }}>
-                        <div style={{ color: "#5b6b7a", fontSize: 13 }}>Study hours</div>
-                        <div style={{ fontWeight: 800, fontSize: 18 }}>{rec.studyHours} hrs</div>
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 6 }}>
-                      <div style={{ color: "#5b6b7a", fontSize: 13 }}>Subject scores</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-                        {Array.isArray(rec.subjects) && rec.subjects.map((s) => (
-                          <div key={s.name} style={{ padding: 8, borderRadius: 8, background: "#fafbfc", display: "flex", justifyContent: "space-between" }}>
-                            <div style={{ fontWeight: 700 }}>{s.name}</div>
-                            <div style={{ color: "#2D5D7B", fontWeight: 800 }}>{s.score}%</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ color: "#5b6b7a", fontSize: 13 }}>Teacher notes</div>
-                      <div style={{ marginTop: 6, padding: 10, borderRadius: 8, background: "#fff" }}>{rec.notes || <span style={{ color: "#8b949a" }}>No notes for this day.</span>}</div>
-                      <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-                        <button style={S.btn} onClick={() => {
-                          const key = formatKey(selectedDate);
-                          const url = `/teacher/notes?date=${key}`;
-                          window.open(url, "_blank");
-                        }}>View classroom notes</button>
-                        <button style={{ ...S.btn, background: "#fff", color: "#2D5D7B", border: "1px solid #e4e7eb" }} onClick={() => alert("Marked as reviewed (mock)")}>Mark reviewed</button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -713,20 +514,9 @@ const S = {
   iconBox: { width: 40, height: 40, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800 },
   subjectName: { fontSize: 15, fontWeight: 700, color: "#17202A" },
   select: { padding: "6px 8px", borderRadius: 8, border: "1px solid #e6eef6" },
-  calendarGrid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginTop: 8 },
-  calendarHeader: { fontSize: 12, color: "#6b7882", textAlign: "center", padding: "6px 4px" },
-  calendarCell: { minHeight: 62, padding: 8, borderRadius: 8, background: "#fff" },
-  dot: (perf) => ({ width: 10, height: 10, borderRadius: 6, background: perf >= 85 ? "#2D5D7B" : (perf >= 70 ? "#60a5fa" : "#f59e0b") }),
-  smallBtn: { padding: "6px 10px", borderRadius: 8, border: "none", background: "#f3f6f8", cursor: "pointer" },
-  /* calendar specific */
-  calNav: { display: "flex", gap: 8, alignItems: "center", marginBottom: 8 },
-  navBtn: { padding: "6px 10px", borderRadius: 8, border: "none", background: "#f3f6f8", cursor: "pointer" },
-  calDay: { fontSize: 13, fontWeight: 700 },
   feedbackInput: { width: "100%", minHeight: 90, padding: 12, borderRadius: 8, border: "1px solid #e6eef6", resize: "vertical", fontSize: 14, fontFamily: "inherit" },
   loaderWrap: { padding: 32, textAlign: "center" },
   loader: { fontSize: 18, color: "#2D5D7B" },
-  modalOverlay: { position: "fixed", left: 0, top: 0, right: 0, bottom: 0, background: "rgba(10,15,25,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 },
-  modalCard: { width: "720px", maxWidth: "95%", background: "#fff", borderRadius: 12, padding: 18 },
 };
 
 export default Reports;
