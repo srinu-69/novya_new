@@ -15,6 +15,7 @@ const Sidebar = () => {
     { id: 3, name: t('Attendance'), path: '/teacher/attendance' },
     { id: 4, name: t('Progress'), path: '/teacher/results' },
     { id: 5, name: t('Students Report'), path: '/teacher/student-report' },
+    { id: 6, name: t('onboarding'), path: '/teacher/onboarding' },
   ];
 
   const handleLogout = () => {

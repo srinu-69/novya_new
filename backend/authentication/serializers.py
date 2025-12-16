@@ -435,7 +435,7 @@ class ParentRegistrationSerializer(serializers.ModelSerializer):
         model = ParentRegistration
         fields = [
             'parent_id', 'email', 'first_name', 'last_name', 
-            'phone_number', 'parent_username', 'parent_password', 'created_at'
+            'phone_number', 'parent_username', 'parent_password', 'status', 'created_at'
         ]
         read_only_fields = ['parent_id', 'created_at']
         extra_kwargs = {
@@ -451,7 +451,8 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
         model = StudentRegistration
         fields = [
             'student_id', 'first_name', 'last_name', 'phone_number',
-            'student_username', 'student_email', 'parent_email', 'created_at'
+            'student_username', 'student_email', 'parent_email', 
+            'grade', 'school', 'status', 'created_at'
         ]
         read_only_fields = ['student_id', 'created_at']
 
@@ -543,6 +544,8 @@ class ParentRegistrationCreateSerializer(serializers.ModelSerializer):
         # Hash the password
         from django.contrib.auth.hashers import make_password
         validated_data['parent_password'] = make_password(validated_data['parent_password'])
+        # Ensure status is set to 'pending'
+        validated_data['status'] = 'pending'
         return ParentRegistration.objects.create(**validated_data)
 
 
@@ -556,7 +559,8 @@ class TeacherRegistrationCreateSerializer(serializers.ModelSerializer):
         model = TeacherRegistration
         fields = [
             'email', 'first_name', 'last_name', 'phone_number',
-            'teacher_username', 'teacher_password', 'confirm_password'
+            'teacher_username', 'teacher_password', 'confirm_password',
+            'grade', 'school'
         ]
         extra_kwargs = {
             'teacher_password': {'write_only': True}
@@ -572,6 +576,9 @@ class TeacherRegistrationCreateSerializer(serializers.ModelSerializer):
         # Hash the password
         from django.contrib.auth.hashers import make_password
         validated_data['teacher_password'] = make_password(validated_data['teacher_password'])
+        # Teachers are auto-approved, but we'll set status in the view
+        # Set to 'approved' here so it's ready immediately
+        validated_data['status'] = 'approved'
         return TeacherRegistration.objects.create(**validated_data)
 
 
@@ -586,9 +593,10 @@ class StudentRegistrationCreateSerializer(serializers.ModelSerializer):
         model = StudentRegistration
         fields = [
             'first_name', 'last_name', 'phone_number',
-            'student_username', 'student_email', 'parent_email',
-            'password', 'confirm_password'
+            'student_username', 'student_email',
+            'grade', 'school', 'password', 'confirm_password'
         ]
+        # parent_email removed - will be added in student profile after login
     
     def to_internal_value(self, data):
         """Override to handle phone number conflicts before validation"""
@@ -613,15 +621,14 @@ class StudentRegistrationCreateSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
-        # Check if parent exists
-        try:
-            ParentRegistration.objects.get(email=validated_data['parent_email'])
-        except ParentRegistration.DoesNotExist:
-            raise serializers.ValidationError("Parent with this email does not exist")
-        
-        # Remove password fields from validated_data before creating StudentRegistration
-        validated_data.pop('password')
+        # Don't require parent to exist - we'll create parent registration if needed
+        # Hash and store password
+        from django.contrib.auth.hashers import make_password
+        password = validated_data.pop('password')
         validated_data.pop('confirm_password')
+        validated_data['student_password'] = make_password(password)
+        # Ensure status is set to 'pending'
+        validated_data['status'] = 'pending'
         
         return StudentRegistration.objects.create(**validated_data)
 

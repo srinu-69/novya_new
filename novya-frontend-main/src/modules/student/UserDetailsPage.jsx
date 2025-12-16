@@ -181,9 +181,12 @@ const UserDetailsPage = () => {
         address: updatedData.address || '',
         ...(updatedData.role === 'student' && {
           grade: updatedData.grade || '',
-          school: updatedData.school || ''
+          school: updatedData.school || '',
+          parentEmail: updatedData.parentEmail || ''  // Include parentEmail so it gets saved to database
         })
       };
+      
+      console.log('📤 Sending profile update with parentEmail:', profileData.parentEmail);
 
       // Call backend API to update profile
       const response = await djangoAPI.put(API_CONFIG.DJANGO.AUTH.PROFILE_UPDATE, profileData);

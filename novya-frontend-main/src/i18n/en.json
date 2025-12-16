@@ -2041,7 +2041,65 @@
   "Excellent": "Excellent",
   "Good": "Good",
   "Average": "Average",
-  "Needs Improvement": "Needs Improvement"
+  "Needs Improvement": "Needs Improvement",
+  "onboarding": "Onboarding",
+  "accountOnboarding": {
+    "title": "Account Onboarding",
+    "subtitle": "Review and manage new account registrations",
+    "stats": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "totalAccounts": "Total Accounts",
+      "students": "Students",
+      "parents": "Parents"
+    },
+    "search": {
+      "placeholder": "Search by name, email, or school..."
+    },
+    "filters": {
+      "type": "Type",
+      "status": "Status",
+      "show": "Show",
+      "allTypes": "All Types",
+      "allStatus": "All Status",
+      "student": "Student",
+      "parent": "Parent",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "bulkActions": {
+      "selected": "selected",
+      "approve": "Approve Selected",
+      "reject": "Reject Selected"
+    },
+    "table": {
+      "nameRole": "Name & Role",
+      "contactInfo": "Contact Info",
+      "school": "School",
+      "registrationDate": "Registration Date",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "messages": {
+      "noResults": "No accounts found matching your criteria"
+    },
+    "pagination": {
+      "showing": "Showing",
+      "to": "to",
+      "of": "of",
+      "accounts": "accounts",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  }
 
 
 }

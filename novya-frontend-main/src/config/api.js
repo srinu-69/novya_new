@@ -70,6 +70,16 @@ export const API_CONFIG = {
       SEND_PARENT_FEEDBACK_TO_TEACHER: `${DJANGO_BASE_URL}/auth/send-parent-feedback-to-teacher/`,
       SAVE_SCHOOL_SCORES: `${DJANGO_BASE_URL}/auth/save-school-scores/`,
       
+      // Registration endpoints (new system with approval workflow)
+      REGISTER_STUDENT: `${DJANGO_BASE_URL}/auth/register-student/`,
+      REGISTER_PARENT: `${DJANGO_BASE_URL}/auth/register-parent/`,
+      REGISTER_TEACHER: `${DJANGO_BASE_URL}/auth/register-teacher/`,
+      
+      // Onboarding endpoints
+      ONBOARDING_PENDING: `${DJANGO_BASE_URL}/auth/onboarding/pending/`,
+      ONBOARDING_APPROVE: `${DJANGO_BASE_URL}/auth/onboarding/approve/`,
+      ONBOARDING_REJECT: `${DJANGO_BASE_URL}/auth/onboarding/reject/`,
+      
       // Parent notification endpoints
       SEND_PARENT_MESSAGE: `${DJANGO_BASE_URL}/auth/send-parent-message/`,
       PARENT_NOTIFICATIONS: `${DJANGO_BASE_URL}/auth/parent-notifications/`,
@@ -370,18 +380,38 @@ export const djangoAPI = {
   
   // Special method for registration (no auth needed)
   postNoAuth: async (url, data) => {
+    console.log(`📤 POST (NoAuth) to: ${url}`);
+    console.log(`📋 Data:`, data);
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: getNoAuthHeaders(),
       body: JSON.stringify(data),
     });
     
+    console.log(`📥 Response status: ${response.status} ${response.statusText}`);
+    
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      console.error(`❌ Error response:`, errorText);
+      
+      // Try to parse as JSON for better error handling
+      let errorData = null;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = { detail: errorText };
+      }
+      
+      // Create error object with response data
+      const error = new Error(`HTTP error! status: ${response.status}`);
+      error.response = { status: response.status, data: errorData };
+      error.status = response.status;
+      throw error;
     }
     
     const responseData = await response.json();
+    console.log(`✅ Response data:`, responseData);
     return responseData;
   },
   

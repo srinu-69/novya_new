@@ -27,6 +27,7 @@ urlpatterns = [
     # New schema endpoints
     path('register-parent/', views.register_parent, name='register_parent'),
     path('register-student/', views.register_student, name='register_student'),
+    path('register-teacher/', views.register_teacher, name='register_teacher'),
     path('parents-list/', views.get_parents, name='get_parents'),
     path('students-list/', views.get_students, name='get_students'),
     path('student/<int:student_id>/', views.get_student_by_id, name='get_student_by_id'),
@@ -85,4 +86,12 @@ urlpatterns = [
     # Leaderboard endpoints
     path('leaderboard/', views.get_leaderboard, name='get_leaderboard'),
     path('leaderboard/recalculate/', views.recalculate_leaderboard, name='recalculate_leaderboard'),
+    
+    # Onboarding endpoints
+    path('onboarding/pending/', views.get_pending_registrations, name='get_pending_registrations'),
+    path('onboarding/approve/', views.approve_registration, name='approve_registration'),
+    path('onboarding/reject/', views.reject_registration, name='reject_registration'),
+    # Alternative without trailing slash (for compatibility)
+    path('onboarding/approve', views.approve_registration, name='approve_registration_no_slash'),
+    path('onboarding/reject', views.reject_registration, name='reject_registration_no_slash'),
 ]

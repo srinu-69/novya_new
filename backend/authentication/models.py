@@ -8,6 +8,11 @@ class ParentRegistration(models.Model):
     """
     Parent Registration model matching new schema
     """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+    ]
+    
     parent_id = models.AutoField(primary_key=True)
     email = models.EmailField(unique=True)  # Primary key in DB but not Django
     first_name = models.CharField(max_length=100)
@@ -19,6 +24,7 @@ class ParentRegistration(models.Model):
     )
     parent_username = models.CharField(max_length=255, unique=True)
     parent_password = models.CharField(max_length=255)  # This will be hashed
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -34,6 +40,11 @@ class StudentRegistration(models.Model):
     """
     Student Registration model matching new schema
     """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+    ]
+    
     student_id = models.AutoField(primary_key=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -46,7 +57,11 @@ class StudentRegistration(models.Model):
     )
     student_username = models.CharField(max_length=255, unique=True)
     student_email = models.EmailField(unique=True, null=True, blank=True)
-    parent_email = models.EmailField()  # Changed from ForeignKey to EmailField
+    parent_email = models.EmailField(null=True, blank=True)  # Optional - will be set in student profile after registration
+    student_password = models.CharField(max_length=255)  # This will be hashed
+    grade = models.CharField(max_length=50, null=True, blank=True)
+    school = models.CharField(max_length=150, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -62,6 +77,11 @@ class TeacherRegistration(models.Model):
     """
     Teacher Registration model matching new schema
     """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+    ]
+    
     teacher_id = models.AutoField(primary_key=True)
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=100)
@@ -73,6 +93,9 @@ class TeacherRegistration(models.Model):
     )
     teacher_username = models.CharField(max_length=255, unique=True)
     teacher_password = models.CharField(max_length=255)  # This will be hashed
+    grade = models.CharField(max_length=50, null=True, blank=True)
+    school = models.CharField(max_length=150, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):

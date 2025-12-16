@@ -230,9 +230,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         
         if role == 'student':
             # Check if username exists in StudentRegistration
-            student_found = StudentRegistration.objects.filter(student_username=username).exists()
-            
-            if not student_found:
+            try:
+                student_reg = StudentRegistration.objects.get(student_username=username)
+                # Check if registration is approved
+                if student_reg.status != 'approved':
+                    validation_error = "Your registration is pending approval. Please wait for your teacher to approve your account before logging in."
+            except StudentRegistration.DoesNotExist:
+                student_found = False
                 # Check if they're in other tables
                 in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists()
                 in_parent = ParentRegistration.objects.filter(parent_username=username).exists()
@@ -245,9 +249,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     validation_error = "Invalid login: This account is not registered as a student. Please use the correct login type."
         
         elif role == 'parent':
-            parent_found = ParentRegistration.objects.filter(parent_username=username).exists()
-            
-            if not parent_found:
+            try:
+                parent_reg = ParentRegistration.objects.get(parent_username=username)
+                # Check if registration is approved
+                if parent_reg.status != 'approved':
+                    validation_error = "Your registration is pending approval. Please wait for your teacher to approve your account before logging in."
+            except ParentRegistration.DoesNotExist:
+                parent_found = False
                 in_student = StudentRegistration.objects.filter(student_username=username).exists()
                 in_teacher = TeacherRegistration.objects.filter(teacher_username=username).exists()
                 
@@ -259,7 +267,27 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     validation_error = "Invalid login: This account is not registered as a parent. Please use the correct login type."
         
         elif role == 'teacher':
-            teacher_found = TeacherRegistration.objects.filter(teacher_username=username).exists()
+            teacher_found = False  # Initialize before use
+            try:
+                teacher_reg = TeacherRegistration.objects.get(teacher_username=username)
+                # Check if registration is approved
+                if teacher_reg.status != 'approved':
+                    validation_error = "Your registration is pending approval. Please wait for approval before logging in."
+                else:
+                    teacher_found = True  # Teacher registration exists and is approved
+            except TeacherRegistration.DoesNotExist:
+                # Check if user exists in users table with Teacher role (for backward compatibility)
+                try:
+                    user_check = User.objects.get(username=username)
+                    if user_check.role == 'Teacher':
+                        # User exists as Teacher but no registration entry - allow login for backward compatibility
+                        # We'll auto-create registration entry during authentication if needed
+                        print(f"⚠️ Teacher {username} exists in users table but not in teacher_registration - allowing login for backward compatibility")
+                        teacher_found = True  # Allow login
+                    else:
+                        teacher_found = False
+                except User.DoesNotExist:
+                    teacher_found = False
             
             if not teacher_found:
                 in_student = StudentRegistration.objects.filter(student_username=username).exists()
@@ -362,7 +390,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                                 teacher_found = True
                                 print(f"✅ Teacher validation passed: {user.email} exists in TeacherRegistration")
                             except TeacherRegistration.DoesNotExist:
-                                pass
+                                # Check if user exists in users table with Teacher role (backward compatibility)
+                                if user.role == 'Teacher':
+                                    teacher_found = True
+                                    print(f"⚠️ Teacher {username} exists in users table but not in teacher_registration - allowing login for backward compatibility")
+                                else:
+                                    teacher_found = False
                         
                         if not teacher_found:
                             # Also check if user exists in OTHER registration tables (should not)
@@ -473,14 +506,78 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 @permission_classes([permissions.AllowAny])
 def register_user(request):
     """
-    Register a new user - Creates records in both User table and role-specific registration tables
-    Also handles case where user exists in users table but missing registration record
+    Register a new user - Routes to new registration system
+    This endpoint now routes to register_student, register_parent, or register_teacher
     """
     print(f"📥 Registration request received for username: {request.data.get('username', 'N/A')}")
     print(f"📋 Request data: {request.data}")
     
     username = request.data.get('username')
     email = request.data.get('email')
+    role = request.data.get('role', 'Student')
+    
+    # Normalize role to lowercase for routing
+    role_lower = role.lower() if role else 'student'
+    
+    # Route to appropriate registration endpoint based on role
+    if role_lower == 'student':
+        # Transform data for student registration
+        student_data = request.data.copy()
+        student_data['first_name'] = request.data.get('firstname') or request.data.get('first_name', '')
+        student_data['last_name'] = request.data.get('lastname') or request.data.get('last_name', '')
+        student_data['phone_number'] = request.data.get('phonenumber') or request.data.get('phone_number', '')
+        student_data['student_username'] = username
+        student_data['student_email'] = email
+        student_data['parent_email'] = request.data.get('parent_email', '')
+        student_data['grade'] = request.data.get('grade', '')
+        student_data['school'] = request.data.get('school', '')
+        student_data['password'] = request.data.get('password', '')
+        student_data['confirm_password'] = request.data.get('confirm_password', '')
+        # Temporarily modify request.data and call the function
+        original_data = request._full_data if hasattr(request, '_full_data') else request.data
+        request._full_data = student_data
+        try:
+            return register_student(request)
+        finally:
+            request._full_data = original_data
+    elif role_lower == 'parent':
+        # Transform data for parent registration
+        parent_data = request.data.copy()
+        parent_data['first_name'] = request.data.get('firstname') or request.data.get('first_name', '')
+        parent_data['last_name'] = request.data.get('lastname') or request.data.get('last_name', '')
+        parent_data['phone_number'] = request.data.get('phonenumber') or request.data.get('phone_number', '')
+        parent_data['parent_username'] = username
+        parent_data['email'] = email
+        parent_data['parent_password'] = request.data.get('password', '')
+        parent_data['confirm_password'] = request.data.get('confirm_password', '')
+        # Temporarily modify request.data and call the function
+        original_data = request._full_data if hasattr(request, '_full_data') else request.data
+        request._full_data = parent_data
+        try:
+            return register_parent(request)
+        finally:
+            request._full_data = original_data
+    elif role_lower == 'teacher':
+        # Transform data for teacher registration
+        teacher_data = request.data.copy()
+        teacher_data['first_name'] = request.data.get('firstname') or request.data.get('first_name', '')
+        teacher_data['last_name'] = request.data.get('lastname') or request.data.get('last_name', '')
+        teacher_data['phone_number'] = request.data.get('phonenumber') or request.data.get('phone_number', '')
+        teacher_data['teacher_username'] = username
+        teacher_data['email'] = email
+        teacher_data['grade'] = request.data.get('grade', '')
+        teacher_data['school'] = request.data.get('school', '')
+        teacher_data['teacher_password'] = request.data.get('password', '')
+        teacher_data['confirm_password'] = request.data.get('confirm_password', '')
+        # Temporarily modify request.data and call the function
+        original_data = request._full_data if hasattr(request, '_full_data') else request.data
+        request._full_data = teacher_data
+        try:
+            return register_teacher(request)
+        finally:
+            request._full_data = original_data
+    
+    # Legacy code for backward compatibility - keep old behavior
     role = request.data.get('role', 'Student')
     
     # Check if user already exists in users table
@@ -1105,12 +1202,24 @@ def get_child_profile_for_parent(request):
         # Get parent registration data
         parent_registration = ParentRegistration.objects.get(parent_username=user.username)
         
-        # Find student(s) linked to this parent via parent_email
-        student_registrations = StudentRegistration.objects.filter(parent_email=parent_registration.email)
+        # Find student(s) linked to this parent via StudentProfile.parent_email
+        # Check StudentProfile first (new way), then fallback to StudentRegistration (legacy)
+        student_profiles = StudentProfile.objects.filter(parent_email=parent_registration.email)
+        student_ids_from_profiles = [profile.student_id for profile in student_profiles]
         
-        if not student_registrations.exists():
+        # Also check StudentRegistration for legacy data
+        student_registrations_legacy = StudentRegistration.objects.filter(parent_email=parent_registration.email)
+        student_ids_from_reg = [reg.student_id for reg in student_registrations_legacy]
+        
+        # Combine both sources
+        all_student_ids = list(set(student_ids_from_profiles + student_ids_from_reg))
+        
+        if not all_student_ids:
             return Response({'error': 'No child found linked to this parent account.'}, 
                            status=status.HTTP_404_NOT_FOUND)
+        
+        # Get student registrations for these student IDs
+        student_registrations = StudentRegistration.objects.filter(student_id__in=all_student_ids)
 
         # Allow selecting a specific child by email (case-insensitive)
         child_email_param = (
@@ -1494,38 +1603,121 @@ def get_dashboard_data(request):
 def register_parent(request):
     """
     Register a new parent
+    Status will be 'pending' by default - User account will be created only when approved
     """
     serializer = ParentRegistrationCreateSerializer(data=request.data)
     if serializer.is_valid():
         parent = serializer.save()
+        # Status is already set to 'pending' by default in the model
         
-        # Also create a User entry for authentication
-        try:
-            user = User.objects.create_user(
-                username=parent.parent_username,
-                email=parent.email,
-                firstname=parent.first_name,
-                lastname=parent.last_name,
-                phonenumber=parent.phone_number,
-                role='Parent',
-                password=request.data.get('parent_password')  # This will be hashed by create_user
-            )
-            
-            # Create Parent profile
-            Parent.objects.create(parent=user)
-            
-        except Exception as e:
-            # If User creation fails, delete the parent registration
-            parent.delete()
-            return Response({
-                'error': f'Failed to create user account: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        print(f"✅ Parent registered: {parent.parent_username}")
+        print(f"   Status: '{parent.status}'")
+        print(f"   Email: '{parent.email}'")
         
         return Response({
-            'message': 'Parent registered successfully',
+            'message': 'Parent registration submitted successfully. Waiting for teacher approval.',
             'parent': ParentRegistrationSerializer(parent).data,
-            'user_id': user.userid
         }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def register_teacher(request):
+    """
+    Register a new teacher
+    Teachers are auto-approved and can log in immediately
+    """
+    print(f"📥 Teacher registration request received")
+    print(f"📋 Request data: {request.data}")
+    
+    serializer = TeacherRegistrationCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        print(f"✅ Serializer is valid")
+        teacher = serializer.save()
+        print(f"✅ Teacher saved to database with ID: {teacher.teacher_id}")
+        # Set status to 'approved' immediately for teachers
+        teacher.status = 'approved'
+        teacher.save()
+        
+        print(f"✅ Teacher registered: {teacher.teacher_username}")
+        print(f"   Grade: '{teacher.grade}'")
+        print(f"   School: '{teacher.school}'")
+        print(f"   Status: '{teacher.status}' (auto-approved)")
+        print(f"   Email: '{teacher.email}'")
+        
+        # Create User account immediately
+        user_email = teacher.email
+        if not User.objects.filter(username=teacher.teacher_username).exists():
+            # Create user - password is already hashed
+            user_obj = User.objects.create(
+                username=teacher.teacher_username,
+                email=user_email,
+                firstname=teacher.first_name,
+                lastname=teacher.last_name,
+                phonenumber=teacher.phone_number,
+                role='Teacher',
+            )
+            # Set password directly (already hashed from registration)
+            user_obj.password = teacher.teacher_password
+            user_obj.save()
+            print(f"✅ Created User account for teacher: {teacher.teacher_username}")
+        else:
+            user_obj = User.objects.get(username=teacher.teacher_username)
+            # Update password from registration
+            user_obj.password = teacher.teacher_password
+            user_obj.save()
+            print(f"✅ Updated User account for teacher: {teacher.teacher_username}")
+        
+        # Auto-create TeacherProfile with registration data
+        try:
+            from authentication.models import TeacherProfile
+            TeacherProfile.objects.get_or_create(
+                teacher_id=teacher.teacher_id,
+                defaults={
+                    'teacher_username': teacher.teacher_username,
+                    'teacher_name': f"{teacher.first_name} {teacher.last_name}",
+                    'email': teacher.email,
+                    'phone_number': teacher.phone_number,
+                    'grade': teacher.grade or '',
+                    'school': teacher.school or '',
+                }
+            )
+            print(f"✅ Auto-created TeacherProfile for teacher: {teacher.teacher_username}")
+        except Exception as profile_error:
+            print(f"Warning: Could not create TeacherProfile: {profile_error}")
+        
+        # Generate JWT tokens for immediate login
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user_obj)
+        
+        return Response({
+            'message': 'Teacher registration successful. You can log in now.',
+            'teacher': {
+                'teacher_id': teacher.teacher_id,
+                'email': teacher.email,
+                'first_name': teacher.first_name,
+                'last_name': teacher.last_name,
+                'teacher_username': teacher.teacher_username,
+                'grade': teacher.grade,
+                'school': teacher.school,
+                'status': teacher.status,
+                'created_at': teacher.created_at
+            },
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            },
+            'user': {
+                'username': user_obj.username,
+                'email': user_obj.email,
+                'role': user_obj.role,
+            }
+        }, status=status.HTTP_201_CREATED)
+    else:
+        print(f"❌ Serializer validation failed!")
+        print(f"📋 Validation errors: {serializer.errors}")
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1535,89 +1727,51 @@ def register_parent(request):
 def register_student(request):
     """
     Register a new student
+    Status will be 'pending' by default - User account will be created only when approved
     """
+    print(f"📥 Student registration request received")
+    print(f"📋 Request data: {request.data}")
+    
     serializer = StudentRegistrationCreateSerializer(data=request.data)
     if serializer.is_valid():
+        print(f"✅ Serializer is valid")
         student = serializer.save()
+        print(f"✅ Student saved to database with ID: {student.student_id}")
+        # Status is already set to 'pending' by default in the model
         
-        # Get password from the serializer's validated data
-        password = request.data.get('password')
+        # Debug: Print student registration details
+        print(f"✅ Student registered: {student.student_username}")
+        print(f"   Grade: '{student.grade}'")
+        print(f"   School: '{student.school}'")
+        print(f"   Status: '{student.status}'")
+        print(f"   Parent Email: Will be added in student profile after login")
         
-        # Also create a User entry for authentication
+        # No longer auto-creating parent registration - parent will register separately
+        # Student will add parent email in their profile after login
+        
+        # Auto-create StudentProfile with registration data (without parent_email initially)
         try:
-            # Ensure we have a valid email for the user
-            user_email = student.student_email
-            if not user_email:
-                user_email = f"{student.student_username}@student.novya.com"
-            
-            # Check if phone number is already in use
-            phone_number = student.phone_number
-            if User.objects.filter(phonenumber=phone_number).exists():
-                # Generate a unique phone number by appending a suffix
-                counter = 1
-                while User.objects.filter(phonenumber=f"{phone_number}_{counter}").exists():
-                    counter += 1
-                phone_number = f"{phone_number}_{counter}"
-                print(f"Warning: Phone number conflict resolved by using: {phone_number}")
-            
-            user = User.objects.create_user(
-                username=student.student_username,
-                email=user_email,
-                firstname=student.first_name,
-                lastname=student.last_name,
-                phonenumber=phone_number,
-                role='Student',
-                password=password  # Add password here
+            StudentProfile.objects.get_or_create(
+                student_id=student.student_id,
+                defaults={
+                    'student_username': student.student_username,
+                    'parent_email': None,  # Will be set by student in profile after login
+                    'grade': student.grade or '',
+                    'school': student.school or '',
+                    'address': request.data.get('address', ''),
+                }
             )
-            
-            # Create Student profile
-            # Try to find the parent if it exists
-            parent_obj = None
-            try:
-                parent_registration = ParentRegistration.objects.get(email=student.parent_email)
-                # Find the corresponding User and Parent objects
-                parent_user = User.objects.get(email=student.parent_email)
-                parent_obj = Parent.objects.get(parent=parent_user)
-            except (ParentRegistration.DoesNotExist, User.DoesNotExist, Parent.DoesNotExist):
-                # Parent doesn't exist yet, create student without parent link
-                pass
-            
-            # Create Student model with error handling
-            try:
-                Student.objects.create(student=user, parent=parent_obj)
-            except Exception as student_error:
-                # If Student creation fails, log the error but don't fail the registration
-                print(f"Warning: Could not create Student model: {student_error}")
-                # Continue with registration even if Student model creation fails
-            
-            # Auto-create StudentProfile with registration data
-            try:
-                StudentProfile.objects.get_or_create(
-                    student_id=student.student_id,
-                    defaults={
-                        'student_username': student.student_username,
-                        'parent_email': student.parent_email,
-                        'grade': request.data.get('grade', ''),
-                        'school': request.data.get('school', ''),
-                        'address': request.data.get('address', ''),
-                    }
-                )
-                print(f"✅ Auto-created StudentProfile for student: {student.student_username}")
-            except Exception as profile_error:
-                print(f"Warning: Could not create StudentProfile: {profile_error}")
-            
-        except Exception as e:
-            # If User creation fails, delete the student registration
-            student.delete()
-            return Response({
-                'error': f'Failed to create user account: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            print(f"✅ Auto-created StudentProfile for student: {student.student_username}")
+        except Exception as profile_error:
+            print(f"Warning: Could not create StudentProfile: {profile_error}")
         
         return Response({
-            'message': 'Student registered successfully',
+            'message': 'Student registration submitted successfully. Waiting for teacher approval.',
             'student': StudentRegistrationSerializer(student).data,
-            'user_id': user.userid
         }, status=status.HTTP_201_CREATED)
+    else:
+        print(f"❌ Serializer validation failed!")
+        print(f"📋 Validation errors: {serializer.errors}")
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -4000,7 +4154,8 @@ def get_user_profile(request):
                     student_profile = None
             
             # Get parent details automatically if parent_email exists
-            parent_email_to_use = profile_parent_email or (student_registration.parent_email if student_registration else None)
+            # parent_email is now primarily in StudentProfile, fallback to StudentRegistration for legacy data
+            parent_email_to_use = profile_parent_email or (student_registration.parent_email if student_registration and student_registration.parent_email else None)
             
             print(f"🔍 Looking for parent with email: {parent_email_to_use}")
             parent_details = {
@@ -4293,30 +4448,37 @@ def update_user_profile(request):
             else:
                 student_registration.student_username = new_username
         
-        # Only update parent_email if it exists in parent_registration table
-        new_parent_email = request.data.get('parentEmail', student_registration.parent_email)
-        if new_parent_email and new_parent_email != student_registration.parent_email:
-            # Check if parent exists (ParentRegistration uses 'email' field, not 'parent_email')
-            try:
-                ParentRegistration.objects.get(email=new_parent_email)
-                student_registration.parent_email = new_parent_email
-            except ParentRegistration.DoesNotExist:
-                # Keep existing parent_email if new one doesn't exist
-                print(f"Warning: Parent email {new_parent_email} not found in parent_registration table")
-        
+        # parent_email is now stored in StudentProfile, not StudentRegistration
+        # Update StudentRegistration (parent_email can be null/empty)
         student_registration.save()
         
         # Get or create StudentProfile
+        # parent_email can be set/updated from request data (student adds it in profile)
+        new_parent_email = request.data.get('parentEmail', '')
         student_profile, created = StudentProfile.objects.get_or_create(
             student_id=student_registration.student_id,
             defaults={
                 'student_username': request.data.get('userName', ''),
-                'parent_email': student_registration.parent_email,  # Use the validated parent_email
+                'parent_email': new_parent_email if new_parent_email else None,  # Set from request or None
                 'grade': request.data.get('grade', ''),
                 'school': request.data.get('school', ''),
                 'address': request.data.get('address', ''),
             }
         )
+        
+        # If profile was just created and has parent_email, create mapping
+        if created and student_profile.parent_email:
+            existing_mapping = ParentStudentMapping.objects.filter(
+                student_id=student_profile.student_id,
+                parent_email__iexact=student_profile.parent_email
+            ).first()
+            
+            if not existing_mapping:
+                ParentStudentMapping.objects.create(
+                    student_id=student_profile.student_id,
+                    parent_email=student_profile.parent_email
+                )
+                print(f"✅ Created ParentStudentMapping for new profile: student_id={student_profile.student_id}, parent_email='{student_profile.parent_email}'")
         
         if not created:
             # Update existing profile
@@ -4329,11 +4491,39 @@ def update_user_profile(request):
                 else:
                     student_profile.student_username = new_profile_username
             
-            student_profile.parent_email = student_registration.parent_email  # Use the validated parent_email
+            # Update parent_email from request (student can add/update it in profile)
+            # Frontend now always sends parentEmail for students, so always check and update
+            if 'parentEmail' in request.data:
+                old_parent_email = student_profile.parent_email
+                student_profile.parent_email = new_parent_email.strip() if new_parent_email and new_parent_email.strip() else None
+                print(f"✅ Updated parent_email in StudentProfile: '{old_parent_email}' -> '{student_profile.parent_email}'")
+                
+                # Also create/update ParentStudentMapping when parent_email is set
+                if student_profile.parent_email:
+                    # Check if mapping already exists
+                    existing_mapping = ParentStudentMapping.objects.filter(
+                        student_id=student_profile.student_id,
+                        parent_email__iexact=student_profile.parent_email
+                    ).first()
+                    
+                    if not existing_mapping:
+                        # Create new mapping
+                        ParentStudentMapping.objects.create(
+                            student_id=student_profile.student_id,
+                            parent_email=student_profile.parent_email
+                        )
+                        print(f"✅ Created ParentStudentMapping: student_id={student_profile.student_id}, parent_email='{student_profile.parent_email}'")
+                    else:
+                        print(f"ℹ️ ParentStudentMapping already exists for student_id={student_profile.student_id}, parent_email='{student_profile.parent_email}'")
+                else:
+                    # If parent_email is cleared, we could optionally remove mappings, but let's keep them for now
+                    print(f"ℹ️ parent_email cleared, keeping existing ParentStudentMapping records")
+            
             student_profile.grade = request.data.get('grade', student_profile.grade)
             student_profile.school = request.data.get('school', student_profile.school)
             student_profile.address = request.data.get('address', student_profile.address)
             student_profile.save()
+            print(f"✅ Saved StudentProfile: student_id={student_profile.student_id}, parent_email='{student_profile.parent_email}'")
         
         return Response({
             'message': 'Profile updated successfully',
@@ -6190,4 +6380,863 @@ def get_teacher_students(request):
         print(traceback.format_exc())
         return Response({
             'error': f'Failed to fetch teacher students: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Onboarding endpoints
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_pending_registrations(request):
+    """
+    Get pending student and parent registrations for the authenticated teacher
+    Filtered by teacher's grade and school
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can access this endpoint.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get teacher registration and profile
+        try:
+            teacher_reg = TeacherRegistration.objects.get(teacher_username=user.username)
+            teacher_profile = TeacherProfile.objects.get(teacher_id=teacher_reg.teacher_id)
+            teacher_school = teacher_profile.school
+            teacher_grade = teacher_profile.grade
+            
+            # Also check teacher_registration table for grade/school (fallback)
+            if not teacher_school and teacher_reg.school:
+                teacher_school = teacher_reg.school
+            if not teacher_grade and teacher_reg.grade:
+                teacher_grade = teacher_reg.grade
+                
+        except (TeacherRegistration.DoesNotExist, TeacherProfile.DoesNotExist):
+            return Response({
+                'error': 'Teacher profile not found. Please complete your profile.',
+                'debug': {
+                    'username': user.username,
+                    'teacher_reg_exists': TeacherRegistration.objects.filter(teacher_username=user.username).exists(),
+                    'teacher_profile_exists': TeacherProfile.objects.filter(teacher_id__in=[tr.teacher_id for tr in TeacherRegistration.objects.filter(teacher_username=user.username)]).exists() if TeacherRegistration.objects.filter(teacher_username=user.username).exists() else False
+                }
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if not teacher_school or not teacher_grade:
+            return Response({
+                'error': 'Teacher profile incomplete. Please set your school and grade.',
+                'debug': {
+                    'teacher_school': teacher_school,
+                    'teacher_grade': teacher_grade,
+                    'teacher_reg_school': teacher_reg.school if hasattr(teacher_reg, 'school') else None,
+                    'teacher_reg_grade': teacher_reg.grade if hasattr(teacher_reg, 'grade') else None
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        teacher_school_trimmed = teacher_school.strip() if teacher_school else ''
+        teacher_grade_trimmed = teacher_grade.strip() if teacher_grade else ''
+        
+        print(f"🔍 ONBOARDING DEBUG: Teacher {user.username} filtering by school='{teacher_school_trimmed}', grade='{teacher_grade_trimmed}'")
+        
+        # Get ALL pending students first for debugging
+        all_pending_students = StudentRegistration.objects.filter(status='pending')
+        print(f"🔍 ONBOARDING DEBUG: Total pending students: {all_pending_students.count()}")
+        
+        # Debug: Print all pending students
+        for student in all_pending_students[:5]:  # First 5 for debugging
+            print(f"   📋 Student: {student.student_username} - school='{student.school}', grade='{student.grade}'")
+        
+        # Get ALL student registrations (pending AND approved) matching teacher's school and grade
+        # Use case-insensitive matching and handle whitespace
+        all_students = StudentRegistration.objects.filter(
+            status__in=['pending', 'approved']
+        ).exclude(school__isnull=True).exclude(school='').exclude(grade__isnull=True).exclude(grade='')
+        
+        # Manual filtering for better matching (handles case and whitespace variations)
+        matching_students = []
+        for student in all_students:
+            student_school = (student.school or '').strip()
+            student_grade = (student.grade or '').strip()
+            
+            # Case-insensitive comparison
+            if (student_school.lower() == teacher_school_trimmed.lower() and 
+                student_grade.lower() == teacher_grade_trimmed.lower()):
+                matching_students.append(student)
+                print(f"   ✅ Match: Student {student.student_username} - school='{student_school}', grade='{student_grade}', status='{student.status}'")
+            else:
+                print(f"   ❌ No match: Student {student.student_username} - school='{student_school}' (expected '{teacher_school_trimmed}'), grade='{student_grade}' (expected '{teacher_grade_trimmed}')")
+        
+        print(f"🔍 ONBOARDING DEBUG: Found {len(matching_students)} matching students (pending + approved)")
+        
+        # Debug: Show all matching students with their IDs and check for parent links
+        for student in matching_students:
+            print(f"   📋 Matching Student: student_id={student.student_id}, username={student.student_username}, status={student.status}")
+            # Immediately check if this student has any parent links
+            # Check ParentStudentMapping
+            student_mappings = ParentStudentMapping.objects.filter(student_id=student.student_id)
+            if student_mappings.exists():
+                print(f"      🔗 Found {student_mappings.count()} mapping(s) for this student:")
+                for sm in student_mappings:
+                    print(f"         → parent_email='{sm.parent_email}'")
+            # Check StudentProfile
+            try:
+                student_profile = StudentProfile.objects.get(student_id=student.student_id)
+                if student_profile.parent_email:
+                    print(f"      🔗 StudentProfile has parent_email='{student_profile.parent_email}'")
+            except StudentProfile.DoesNotExist:
+                print(f"      ⚠️ No StudentProfile found for student_id={student.student_id}")
+            # Check StudentRegistration
+            if student.parent_email:
+                print(f"      🔗 StudentRegistration has parent_email='{student.parent_email}'")
+        
+        # Get approved students for this teacher (students approved by this teacher)
+        # These are students who match teacher's school/grade and are approved
+        approved_students_by_teacher = [s for s in matching_students if s.status == 'approved']
+        
+        approved_student_ids = [s.student_id for s in approved_students_by_teacher]
+        print(f"🔍 ONBOARDING DEBUG: Found {len(approved_student_ids)} approved students for this teacher")
+        print(f"🔍 ONBOARDING DEBUG: Approved student IDs: {approved_student_ids}")
+        
+        # Get pending students for this teacher (students that match teacher's school/grade but are pending)
+        pending_students_by_teacher = [s for s in matching_students if s.status == 'pending']
+        
+        pending_student_ids = [s.student_id for s in pending_students_by_teacher]
+        print(f"🔍 ONBOARDING DEBUG: Found {len(pending_student_ids)} pending students for this teacher")
+        print(f"🔍 ONBOARDING DEBUG: Pending student IDs: {pending_student_ids}")
+        
+        # Get ALL matching student IDs (both pending and approved) for parent linking
+        # Parents should appear if linked to ANY student (pending or approved) that matches teacher's criteria
+        all_matching_student_ids = [s.student_id for s in matching_students]
+        print(f"🔍 ONBOARDING DEBUG: Found {len(all_matching_student_ids)} total matching students (pending + approved) for this teacher")
+        
+        # Get parent emails from ALL matching students (both approved and pending) that are displayed in onboarding
+        # Check StudentProfile, StudentRegistration, and ParentStudentMapping
+        all_parent_emails_from_displayed_students = set()
+        parent_emails_from_approved_students = set()
+        parent_emails_from_pending_students = set()
+        
+        print(f"🔍 ONBOARDING DEBUG: Processing {len(all_matching_student_ids)} total matching students for parent linking")
+        print(f"🔍 ONBOARDING DEBUG: Approved student IDs: {approved_student_ids}")
+        print(f"🔍 ONBOARDING DEBUG: Pending student IDs: {pending_student_ids}")
+        print(f"🔍 ONBOARDING DEBUG: All matching student IDs: {all_matching_student_ids}")
+        
+        # Process ALL matching students first (to get all parent emails)
+        if all_matching_student_ids:
+            # Get from StudentProfile for ALL matching students
+            student_profiles_all = StudentProfile.objects.filter(
+                student_id__in=all_matching_student_ids
+            )
+            print(f"🔍 ONBOARDING DEBUG: Found {student_profiles_all.count()} total student profiles for matching students")
+            
+            student_profiles_with_parents = student_profiles_all.exclude(parent_email__isnull=True).exclude(parent_email='')
+            print(f"🔍 ONBOARDING DEBUG: Found {student_profiles_with_parents.count()} student profiles with parent_email")
+            
+            # Debug: Show all profiles found
+            for profile in student_profiles_all:
+                print(f"   🔍 Profile for student_id={profile.student_id}: parent_email='{profile.parent_email}' (null={profile.parent_email is None})")
+            for profile in student_profiles_with_parents:
+                if profile.parent_email and profile.parent_email.strip():
+                    email_normalized = profile.parent_email.strip().lower()
+                    all_parent_emails_from_displayed_students.add(email_normalized)
+                    # Check if student is approved or pending
+                    if profile.student_id in approved_student_ids:
+                        parent_emails_from_approved_students.add(email_normalized)
+                        print(f"   📧 Student {profile.student_id} (Profile, APPROVED): parent_email='{profile.parent_email}'")
+                    elif profile.student_id in pending_student_ids:
+                        parent_emails_from_pending_students.add(email_normalized)
+                        print(f"   📧 Student {profile.student_id} (Profile, PENDING): parent_email='{profile.parent_email}'")
+            
+            # Get from StudentRegistration for ALL matching students
+            students_reg_all = StudentRegistration.objects.filter(student_id__in=all_matching_student_ids)
+            print(f"🔍 ONBOARDING DEBUG: Found {students_reg_all.count()} student registrations")
+            # Debug: Show all registrations found
+            for student in students_reg_all:
+                print(f"   🔍 Registration for student_id={student.student_id} (username={student.student_username}): parent_email='{student.parent_email}' (null={student.parent_email is None})")
+                if student.parent_email and student.parent_email.strip():
+                    email_normalized = student.parent_email.strip().lower()
+                    all_parent_emails_from_displayed_students.add(email_normalized)
+                    # Check if student is approved or pending
+                    if student.student_id in approved_student_ids:
+                        parent_emails_from_approved_students.add(email_normalized)
+                        print(f"   📧 Student {student.student_id} (Registration, APPROVED): parent_email='{student.parent_email}'")
+                    elif student.student_id in pending_student_ids:
+                        parent_emails_from_pending_students.add(email_normalized)
+                        print(f"   📧 Student {student.student_id} (Registration, PENDING): parent_email='{student.parent_email}'")
+            
+            # Get from ParentStudentMapping for ALL matching students - THIS IS CRITICAL
+            parent_mappings_all = ParentStudentMapping.objects.filter(student_id__in=all_matching_student_ids)
+            print(f"🔍 ONBOARDING DEBUG: Found {parent_mappings_all.count()} parent-student mappings")
+            # Debug: Show ALL mappings in database for these students
+            all_mappings_debug = ParentStudentMapping.objects.all()
+            print(f"🔍 ONBOARDING DEBUG: Total mappings in DB: {all_mappings_debug.count()}")
+            for mapping_debug in all_mappings_debug:
+                print(f"   🔍 Mapping: student_id={mapping_debug.student_id}, parent_email='{mapping_debug.parent_email}'")
+            
+            for mapping in parent_mappings_all:
+                print(f"   🔍 Processing mapping: student_id={mapping.student_id}, parent_email='{mapping.parent_email}'")
+                if mapping.parent_email and mapping.parent_email.strip():
+                    email_normalized = mapping.parent_email.strip().lower()
+                    all_parent_emails_from_displayed_students.add(email_normalized)
+                    # Check if student is approved or pending
+                    if mapping.student_id in approved_student_ids:
+                        parent_emails_from_approved_students.add(email_normalized)
+                        print(f"   📧 Student {mapping.student_id} (Mapping, APPROVED): parent_email='{mapping.parent_email}'")
+                    elif mapping.student_id in pending_student_ids:
+                        parent_emails_from_pending_students.add(email_normalized)
+                        print(f"   📧 Student {mapping.student_id} (Mapping, PENDING): parent_email='{mapping.parent_email}'")
+                else:
+                    print(f"   ⚠️ Mapping has empty parent_email: student_id={mapping.student_id}")
+        
+        print(f"🔍 ONBOARDING DEBUG: Found {len(parent_emails_from_approved_students)} unique parent emails from approved students")
+        print(f"🔍 ONBOARDING DEBUG: Found {len(parent_emails_from_pending_students)} unique parent emails from pending students")
+        print(f"🔍 ONBOARDING DEBUG: Total unique parent emails from all displayed students: {len(all_parent_emails_from_displayed_students)}")
+        print(f"🔍 ONBOARDING DEBUG: Parent emails list: {list(all_parent_emails_from_displayed_students)}")
+        
+        # ALSO: Get parents directly from ParentStudentMapping for matching students
+        # This ensures we don't miss any parents even if they're not in StudentProfile or StudentRegistration
+        if all_matching_student_ids:
+            direct_parent_mappings = ParentStudentMapping.objects.filter(student_id__in=all_matching_student_ids)
+            print(f"🔍 ONBOARDING DEBUG: Checking {direct_parent_mappings.count()} direct parent-student mappings")
+            for mapping in direct_parent_mappings:
+                if mapping.parent_email and mapping.parent_email.strip():
+                    email_normalized = mapping.parent_email.strip().lower()
+                    if email_normalized not in all_parent_emails_from_displayed_students:
+                        all_parent_emails_from_displayed_students.add(email_normalized)
+                        print(f"   🔍 Found additional parent via direct mapping: {mapping.parent_email} (student_id: {mapping.student_id})")
+                        # Add to approved or pending based on student status
+                        if mapping.student_id in approved_student_ids:
+                            parent_emails_from_approved_students.add(email_normalized)
+                        elif mapping.student_id in pending_student_ids:
+                            parent_emails_from_pending_students.add(email_normalized)
+        
+        print(f"🔍 ONBOARDING DEBUG: Final count - Total unique parent emails: {len(all_parent_emails_from_displayed_students)}")
+        print(f"🔍 ONBOARDING DEBUG: Final parent emails: {list(all_parent_emails_from_displayed_students)}")
+        
+        # CRITICAL FALLBACK: If no parent emails found via normal methods, check ParentStudentMapping directly
+        # This handles cases where parent-student link exists only in mapping table
+        if len(all_parent_emails_from_displayed_students) == 0 and all_matching_student_ids:
+            print(f"⚠️ ONBOARDING DEBUG: No parent emails found via normal methods, checking ParentStudentMapping directly...")
+            fallback_mappings = ParentStudentMapping.objects.filter(student_id__in=all_matching_student_ids)
+            print(f"🔍 ONBOARDING DEBUG: Fallback check found {fallback_mappings.count()} mappings")
+            for fallback_mapping in fallback_mappings:
+                if fallback_mapping.parent_email and fallback_mapping.parent_email.strip():
+                    email_normalized = fallback_mapping.parent_email.strip().lower()
+                    all_parent_emails_from_displayed_students.add(email_normalized)
+                    print(f"   ✅ FALLBACK: Found parent_email='{fallback_mapping.parent_email}' for student_id={fallback_mapping.student_id}")
+                    # Add to approved or pending based on student status
+                    if fallback_mapping.student_id in approved_student_ids:
+                        parent_emails_from_approved_students.add(email_normalized)
+                    elif fallback_mapping.student_id in pending_student_ids:
+                        parent_emails_from_pending_students.add(email_normalized)
+            print(f"🔍 ONBOARDING DEBUG: After fallback check - Total unique parent emails: {len(all_parent_emails_from_displayed_students)}")
+        
+        # Get ALL parent registrations (pending AND approved)
+        all_parents = ParentRegistration.objects.all()
+        
+        print(f"🔍 ONBOARDING DEBUG: Total parent registrations in DB: {all_parents.count()}")
+        
+        # AGGRESSIVE APPROACH: For each parent, check ALL possible ways they could be linked
+        # This ensures we don't miss any parents
+        matching_parents = []
+        
+        # Process all parents and determine their status based on linked students
+        for parent in all_parents:
+            parent_email_normalized = parent.email.strip().lower() if parent.email else ''
+            
+            if not parent_email_normalized:
+                print(f"   ⚠️ Skipping Parent {parent.parent_id}: no email")
+                continue
+            
+            # Check if parent is linked to any displayed student (approved or pending)
+            is_linked_to_displayed_student = parent_email_normalized in all_parent_emails_from_displayed_students
+            
+            # If not found in the set, check ParentStudentMapping directly with case-insensitive match
+            if not is_linked_to_displayed_student and all_matching_student_ids:
+                # Check ParentStudentMapping with case-insensitive email match
+                direct_mapping_check = ParentStudentMapping.objects.filter(
+                    parent_email__iexact=parent.email,
+                    student_id__in=all_matching_student_ids
+                )
+                
+                if direct_mapping_check.exists():
+                    print(f"   ✅ Found via direct mapping check: Parent {parent.parent_id} ({parent.email})")
+                    is_linked_to_displayed_student = True
+                    # Add to sets
+                    all_parent_emails_from_displayed_students.add(parent_email_normalized)
+                    # Check which student status
+                    for mapping in direct_mapping_check:
+                        if mapping.student_id in approved_student_ids:
+                            parent_emails_from_approved_students.add(parent_email_normalized)
+                            print(f"      → Linked to APPROVED student_id={mapping.student_id}")
+                        elif mapping.student_id in pending_student_ids:
+                            parent_emails_from_pending_students.add(parent_email_normalized)
+                            print(f"      → Linked to PENDING student_id={mapping.student_id}")
+            
+            # Also check StudentProfile and StudentRegistration directly (case-insensitive)
+            if not is_linked_to_displayed_student and all_matching_student_ids:
+                # Check StudentProfile
+                profile_check = StudentProfile.objects.filter(
+                    student_id__in=all_matching_student_ids,
+                    parent_email__iexact=parent.email
+                ).exclude(parent_email__isnull=True).exclude(parent_email='')
+                
+                if profile_check.exists():
+                    print(f"   ✅ Found via StudentProfile check: Parent {parent.parent_id} ({parent.email})")
+                    is_linked_to_displayed_student = True
+                    all_parent_emails_from_displayed_students.add(parent_email_normalized)
+                    for profile in profile_check:
+                        if profile.student_id in approved_student_ids:
+                            parent_emails_from_approved_students.add(parent_email_normalized)
+                        elif profile.student_id in pending_student_ids:
+                            parent_emails_from_pending_students.add(parent_email_normalized)
+                
+                # Check StudentRegistration
+                reg_check = StudentRegistration.objects.filter(
+                    student_id__in=all_matching_student_ids,
+                    parent_email__iexact=parent.email
+                ).exclude(parent_email__isnull=True).exclude(parent_email='')
+                
+                if reg_check.exists():
+                    print(f"   ✅ Found via StudentRegistration check: Parent {parent.parent_id} ({parent.email})")
+                    is_linked_to_displayed_student = True
+                    all_parent_emails_from_displayed_students.add(parent_email_normalized)
+                    for student_reg in reg_check:
+                        if student_reg.student_id in approved_student_ids:
+                            parent_emails_from_approved_students.add(parent_email_normalized)
+                        elif student_reg.student_id in pending_student_ids:
+                            parent_emails_from_pending_students.add(parent_email_normalized)
+            
+            if not is_linked_to_displayed_student:
+                print(f"   ❌ No match: Parent {parent.parent_id} ({parent.email}) - not linked to any displayed student")
+                continue
+            
+            # Parent is linked to a displayed student - include them
+            matching_parents.append(parent)
+            
+            # Check if parent is linked to an approved student
+            is_linked_to_approved_student = parent_email_normalized in parent_emails_from_approved_students
+            
+            # Check if parent is linked to a pending student
+            is_linked_to_pending_student = parent_email_normalized in parent_emails_from_pending_students
+            
+            if is_linked_to_approved_student:
+                print(f"   ✅ Match: Parent {parent.parent_id} ({parent.email}) linked to APPROVED student - will show as APPROVED")
+            elif is_linked_to_pending_student:
+                if parent.status == 'approved':
+                    print(f"   ✅ Match: Parent {parent.parent_id} ({parent.email}) linked to PENDING student but parent is APPROVED - will show as APPROVED")
+                else:
+                    print(f"   ✅ Match: Parent {parent.parent_id} ({parent.email}) linked to PENDING student - will show as PENDING")
+            else:
+                # Parent is in the set but not in approved or pending - might be a data inconsistency
+                print(f"   ✅ Match: Parent {parent.parent_id} ({parent.email}) linked to displayed student (status: {parent.status})")
+        
+        print(f"🔍 ONBOARDING DEBUG: Found {len(matching_parents)} parents to show after initial check")
+        
+        # FINAL COMPREHENSIVE CHECK: ALWAYS run this to ensure we catch ALL parents
+        # Query ALL parents and check if they're linked to displayed students
+        # This is a catch-all to ensure we don't miss any parents
+        if len(all_matching_student_ids) > 0:
+            print(f"⚠️ ONBOARDING DEBUG: No parents found via normal methods. Performing comprehensive check...")
+            
+            # Get all student IDs as a list for the query
+            student_ids_list = list(all_matching_student_ids)
+            print(f"   🔍 Checking for parents linked to student_ids: {student_ids_list}")
+            
+            # Debug: Show ALL mappings in database
+            all_db_mappings = ParentStudentMapping.objects.all()
+            print(f"   🔍 ALL mappings in database ({all_db_mappings.count()} total):")
+            for db_mapping in all_db_mappings:
+                print(f"      📋 DB Mapping: student_id={db_mapping.student_id} (type: {type(db_mapping.student_id)}), parent_email='{db_mapping.parent_email}'")
+            
+            # Debug: Show what student_ids we're looking for
+            print(f"   🔍 Looking for student_ids: {student_ids_list} (types: {[type(sid) for sid in student_ids_list]})")
+            
+            # Check ParentStudentMapping for ANY parent linked to these students
+            # Try both exact match and converting to int if needed
+            all_mappings = ParentStudentMapping.objects.filter(student_id__in=student_ids_list)
+            print(f"   🔍 Found {all_mappings.count()} total mappings for these students (using student_id__in)")
+            
+            # Also try individual queries in case there's a type mismatch
+            for sid in student_ids_list:
+                individual_mappings = ParentStudentMapping.objects.filter(student_id=sid)
+                if individual_mappings.exists():
+                    print(f"      🔍 Found {individual_mappings.count()} mapping(s) for student_id={sid}")
+                    for mapping in individual_mappings:
+                        print(f"         📋 Mapping: student_id={mapping.student_id} (type: {type(mapping.student_id)}), parent_email='{mapping.parent_email}'")
+                        # Try to find parent by email (case-insensitive)
+                        try:
+                            parent = ParentRegistration.objects.get(email__iexact=mapping.parent_email)
+                            if parent not in matching_parents:
+                                matching_parents.append(parent)
+                                parent_email_norm = parent.email.strip().lower()
+                                all_parent_emails_from_displayed_students.add(parent_email_norm)
+                                # Update status sets based on student status
+                                if sid in approved_student_ids:
+                                    parent_emails_from_approved_students.add(parent_email_norm)
+                                    print(f"         ✅ Added parent (APPROVED student): {parent.first_name} {parent.last_name} ({parent.email})")
+                                elif sid in pending_student_ids:
+                                    parent_emails_from_pending_students.add(parent_email_norm)
+                                    print(f"         ✅ Added parent (PENDING student): {parent.first_name} {parent.last_name} ({parent.email})")
+                        except ParentRegistration.DoesNotExist:
+                            print(f"         ⚠️ Parent with email '{mapping.parent_email}' not found in ParentRegistration")
+                            # Try exact match
+                            try:
+                                parent = ParentRegistration.objects.get(email=mapping.parent_email)
+                                if parent not in matching_parents:
+                                    matching_parents.append(parent)
+                                    parent_email_norm = parent.email.strip().lower()
+                                    all_parent_emails_from_displayed_students.add(parent_email_norm)
+                                    if sid in approved_student_ids:
+                                        parent_emails_from_approved_students.add(parent_email_norm)
+                                    elif sid in pending_student_ids:
+                                        parent_emails_from_pending_students.add(parent_email_norm)
+                                    print(f"         ✅ Added parent (exact match): {parent.first_name} {parent.last_name} ({parent.email})")
+                            except:
+                                pass
+                        except ParentRegistration.MultipleObjectsReturned:
+                            parent = ParentRegistration.objects.filter(email__iexact=mapping.parent_email).first()
+                            if parent and parent not in matching_parents:
+                                matching_parents.append(parent)
+                                parent_email_norm = parent.email.strip().lower()
+                                all_parent_emails_from_displayed_students.add(parent_email_norm)
+                                if sid in approved_student_ids:
+                                    parent_emails_from_approved_students.add(parent_email_norm)
+                                elif sid in pending_student_ids:
+                                    parent_emails_from_pending_students.add(parent_email_norm)
+                                print(f"         ✅ Added parent (first match): {parent.first_name} {parent.last_name} ({parent.email})")
+            
+            # Also check all mappings in database and see if any match
+            for mapping in all_mappings:
+                print(f"      📋 Processing mapping: student_id={mapping.student_id}, parent_email='{mapping.parent_email}'")
+                # Try to find parent by email (case-insensitive)
+                try:
+                    parent = ParentRegistration.objects.get(email__iexact=mapping.parent_email)
+                    if parent not in matching_parents:
+                        matching_parents.append(parent)
+                        print(f"      ✅ Added parent: {parent.first_name} {parent.last_name} ({parent.email})")
+                except ParentRegistration.DoesNotExist:
+                    print(f"      ⚠️ Parent with email '{mapping.parent_email}' not found in ParentRegistration")
+                except ParentRegistration.MultipleObjectsReturned:
+                    parent = ParentRegistration.objects.filter(email__iexact=mapping.parent_email).first()
+                    if parent and parent not in matching_parents:
+                        matching_parents.append(parent)
+                        print(f"      ✅ Added parent (first match): {parent.first_name} {parent.last_name} ({parent.email})")
+            
+            # Also check StudentProfile for parent emails
+            all_profiles = StudentProfile.objects.filter(student_id__in=student_ids_list)
+            for profile in all_profiles:
+                if profile.parent_email:
+                    print(f"      📋 Profile: student_id={profile.student_id}, parent_email='{profile.parent_email}'")
+                    try:
+                        parent = ParentRegistration.objects.get(email__iexact=profile.parent_email)
+                        if parent not in matching_parents:
+                            matching_parents.append(parent)
+                            parent_email_norm = parent.email.strip().lower()
+                            all_parent_emails_from_displayed_students.add(parent_email_norm)
+                            if profile.student_id in approved_student_ids:
+                                parent_emails_from_approved_students.add(parent_email_norm)
+                            elif profile.student_id in pending_student_ids:
+                                parent_emails_from_pending_students.add(parent_email_norm)
+                            print(f"      ✅ Added parent from profile: {parent.first_name} {parent.last_name} ({parent.email})")
+                    except ParentRegistration.DoesNotExist:
+                        print(f"      ⚠️ Parent with email '{profile.parent_email}' not found in ParentRegistration")
+            
+            # Also check StudentRegistration for parent emails
+            all_student_regs = StudentRegistration.objects.filter(student_id__in=student_ids_list)
+            for student_reg in all_student_regs:
+                if student_reg.parent_email:
+                    print(f"      📋 Registration: student_id={student_reg.student_id}, parent_email='{student_reg.parent_email}'")
+                    try:
+                        parent = ParentRegistration.objects.get(email__iexact=student_reg.parent_email)
+                        if parent not in matching_parents:
+                            matching_parents.append(parent)
+                            parent_email_norm = parent.email.strip().lower()
+                            all_parent_emails_from_displayed_students.add(parent_email_norm)
+                            if student_reg.student_id in approved_student_ids:
+                                parent_emails_from_approved_students.add(parent_email_norm)
+                            elif student_reg.student_id in pending_student_ids:
+                                parent_emails_from_pending_students.add(parent_email_norm)
+                            print(f"      ✅ Added parent from registration: {parent.first_name} {parent.last_name} ({parent.email})")
+                    except ParentRegistration.DoesNotExist:
+                        print(f"      ⚠️ Parent with email '{student_reg.parent_email}' not found in ParentRegistration")
+            
+            print(f"   ✅ Comprehensive check found {len(matching_parents)} total parents")
+        
+        # Remove duplicates from matching_parents (in case same parent was added multiple times)
+        seen_parent_ids = set()
+        unique_matching_parents = []
+        for parent in matching_parents:
+            if parent.parent_id not in seen_parent_ids:
+                seen_parent_ids.add(parent.parent_id)
+                unique_matching_parents.append(parent)
+        matching_parents = unique_matching_parents
+        print(f"🔍 ONBOARDING DEBUG: After deduplication, {len(matching_parents)} unique parents to show")
+        
+        # Combine into a single list (only students and parents - teachers don't need approval)
+        registrations = []
+        
+        # Add students
+        for student in matching_students:
+            registrations.append({
+                'id': student.student_id,
+                'type': 'student',
+                'name': f"{student.first_name} {student.last_name}",
+                'email': student.student_email or '',
+                'phone': student.phone_number or '',
+                'school': student.school or '',
+                'grade': student.grade or '',
+                'registrationDate': student.created_at.strftime('%Y-%m-%d'),
+                'status': student.status,
+                'parentEmail': '',  # No longer stored in registration
+            })
+        
+        # Add parents with status based on linked students and parent approval status
+        print(f"🔍 ONBOARDING DEBUG: Adding {len(matching_parents)} parents to registrations list")
+        for parent in matching_parents:
+            parent_email_normalized = parent.email.strip().lower() if parent.email else ''
+            
+            # Determine status:
+            # - "approved" if: (linked to approved student) OR (parent.status == 'approved' and linked to any displayed student)
+            # - "pending" otherwise
+            if parent_email_normalized in parent_emails_from_approved_students:
+                # Parent is linked to an approved student - show as approved
+                parent_status = 'approved'
+                print(f"   ✅ Adding parent {parent.first_name} {parent.last_name} ({parent.email}) as APPROVED (linked to approved student)")
+            elif parent.status == 'approved' and parent_email_normalized in all_parent_emails_from_displayed_students:
+                # Parent is approved by this teacher and linked to a displayed student - show as approved
+                parent_status = 'approved'
+                print(f"   ✅ Adding parent {parent.first_name} {parent.last_name} ({parent.email}) as APPROVED (parent is approved)")
+            elif parent_email_normalized in parent_emails_from_pending_students:
+                # Parent is linked to a pending student - show as pending
+                parent_status = 'pending'
+                print(f"   ✅ Adding parent {parent.first_name} {parent.last_name} ({parent.email}) as PENDING (linked to pending student)")
+            else:
+                # Fallback: use parent's registration status
+                parent_status = parent.status if parent.status in ['pending', 'approved'] else 'pending'
+                print(f"   ✅ Adding parent {parent.first_name} {parent.last_name} ({parent.email}) as {parent_status} (fallback)")
+            
+            parent_registration = {
+                'id': parent.parent_id,
+                'type': 'parent',
+                'name': f"{parent.first_name} {parent.last_name}",
+                'email': parent.email,
+                'phone': parent.phone_number or '',
+                'school': teacher_school_trimmed,  # Parent's school is same as student's
+                'grade': teacher_grade_trimmed,  # Parent's grade is same as student's
+                'registrationDate': parent.created_at.strftime('%Y-%m-%d'),
+                'status': parent_status,
+            }
+            registrations.append(parent_registration)
+            print(f"      📝 Added registration entry: {parent_registration}")
+        
+        # Sort by registration date (newest first)
+        registrations.sort(key=lambda x: x['registrationDate'], reverse=True)
+        
+        # Final summary logging
+        student_regs = [r for r in registrations if r['type'] == 'student']
+        parent_regs = [r for r in registrations if r['type'] == 'parent']
+        print(f"✅ ONBOARDING: Returning {len(registrations)} total registrations")
+        print(f"   📊 Breakdown: {len(student_regs)} students, {len(parent_regs)} parents")
+        print(f"   📋 Students: {[s['name'] for s in student_regs]}")
+        print(f"   👨‍👩‍👧 Parents: {[p['name'] for p in parent_regs]}")
+        if len(parent_regs) > 0:
+            for parent_reg in parent_regs:
+                print(f"      - Parent: {parent_reg['name']} ({parent_reg['email']}), status: {parent_reg['status']}")
+        else:
+            print(f"   ⚠️ WARNING: No parents found in registrations list!")
+            print(f"   🔍 Matching parents list had {len(matching_parents)} parents")
+            if len(matching_parents) > 0:
+                print(f"   🔍 Matching parents details:")
+                for parent in matching_parents:
+                    print(f"      - {parent.first_name} {parent.last_name} ({parent.email}), status: {parent.status}")
+        
+        return Response({
+            'registrations': registrations,
+            'count': len(registrations),
+            'debug': {
+                'teacher_school': teacher_school_trimmed,
+                'teacher_grade': teacher_grade_trimmed,
+                'total_pending_students': all_pending_students.count(),
+                'matching_students': len(matching_students),
+                'matching_parents_found': len(matching_parents),
+                'students_returned': len(student_regs),
+                'parents_returned': len(parent_regs)
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_pending_registrations: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to fetch pending registrations: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def approve_registration(request):
+    """
+    Approve a student or parent registration
+    Creates User account and enables login
+    """
+    print(f"🔍 APPROVE REGISTRATION CALLED - Path: {request.path}, Method: {request.method}")
+    print(f"📋 Request data: {request.data}")
+    print(f"👤 User: {request.user.username if request.user.is_authenticated else 'Not authenticated'}")
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can approve registrations.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        registration_id = request.data.get('id')
+        registration_type = request.data.get('type')  # 'student' or 'parent'
+        
+        if not registration_id or not registration_type:
+            return Response({
+                'error': 'Missing required fields: id and type'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if registration_type == 'student':
+            try:
+                student = StudentRegistration.objects.get(student_id=registration_id)
+            except StudentRegistration.DoesNotExist:
+                return Response({
+                    'error': 'Student registration not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Check if already approved
+            if student.status == 'approved':
+                # Check if user exists
+                if User.objects.filter(username=student.student_username).exists():
+                    user_obj = User.objects.get(username=student.student_username)
+                    return Response({
+                        'message': 'Student is already approved and can log in',
+                        'student_id': student.student_id
+                    }, status=status.HTTP_200_OK)
+                else:
+                    # User doesn't exist but registration is approved - create user
+                    user_email = student.student_email
+                    if not user_email:
+                        user_email = f"{student.student_username}@student.novya.com"
+                    user_obj = User.objects.create(
+                        username=student.student_username,
+                        email=user_email,
+                        firstname=student.first_name,
+                        lastname=student.last_name,
+                        phonenumber=student.phone_number,
+                        role='Student',
+                    )
+                    user_obj.password = student.student_password
+                    user_obj.save()
+                    StudentProfile.objects.get_or_create(
+                        student_id=student.student_id,
+                        defaults={
+                            'student_username': student.student_username,
+                            'parent_email': None,
+                            'grade': student.grade or '',
+                            'school': student.school or '',
+                        }
+                    )
+                    return Response({
+                        'message': 'Student is already approved. User account created.',
+                        'student_id': student.student_id
+                    }, status=status.HTTP_200_OK)
+            
+            # Only approve if status is pending
+            if student.status != 'pending':
+                return Response({
+                    'error': f'Student registration is already {student.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create User account
+            user_email = student.student_email
+            if not user_email:
+                user_email = f"{student.student_username}@student.novya.com"
+            
+            # Check if user already exists
+            if User.objects.filter(username=student.student_username).exists():
+                user_obj = User.objects.get(username=student.student_username)
+                # Update password from registration (already hashed, so set directly)
+                user_obj.password = student.student_password
+                user_obj.save()
+            else:
+                # Create user - password is already hashed, so we need to set it after creation
+                user_obj = User.objects.create(
+                    username=student.student_username,
+                    email=user_email,
+                    firstname=student.first_name,
+                    lastname=student.last_name,
+                    phonenumber=student.phone_number,
+                    role='Student',
+                )
+                # Set password directly (already hashed from registration)
+                user_obj.password = student.student_password
+                user_obj.save()
+            
+            # Update student registration status
+            student.status = 'approved'
+            student.save()
+            
+            # Create Student profile if it doesn't exist (parent_email will be added later by student)
+            StudentProfile.objects.get_or_create(
+                student_id=student.student_id,
+                defaults={
+                    'student_username': student.student_username,
+                    'parent_email': None,  # Will be set by student in profile after login
+                    'grade': student.grade or '',
+                    'school': student.school or '',
+                }
+            )
+            
+            # No longer auto-approving parent - parent will be linked via StudentProfile.parent_email
+            # and will appear in onboarding when they register
+            
+            return Response({
+                'message': 'Student registration approved successfully',
+                'student_id': student.student_id
+            }, status=status.HTTP_200_OK)
+            
+        elif registration_type == 'parent':
+            try:
+                parent = ParentRegistration.objects.get(parent_id=registration_id)
+            except ParentRegistration.DoesNotExist:
+                return Response({
+                    'error': 'Parent registration not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Check if parent is already approved (they might have been approved by another teacher)
+            if parent.status == 'approved':
+                # Parent already approved - just ensure User account exists
+                if not User.objects.filter(email=parent.email).exists():
+                    user_obj = User.objects.create(
+                        username=parent.parent_username,
+                        email=parent.email,
+                        firstname=parent.first_name,
+                        lastname=parent.last_name,
+                        phonenumber=parent.phone_number,
+                        role='Parent',
+                    )
+                    user_obj.password = parent.parent_password
+                    user_obj.save()
+                    Parent.objects.create(parent=user_obj)
+                
+                return Response({
+                    'message': 'Parent is already approved and can log in',
+                    'parent_id': parent.parent_id
+                }, status=status.HTTP_200_OK)
+            
+            # Only approve if status is pending
+            if parent.status != 'pending':
+                return Response({
+                    'error': f'Parent registration is already {parent.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create User account
+            if not User.objects.filter(email=parent.email).exists():
+                # Create user - password is already hashed, so we need to set it after creation
+                user_obj = User.objects.create(
+                    username=parent.parent_username,
+                    email=parent.email,
+                    firstname=parent.first_name,
+                    lastname=parent.last_name,
+                    phonenumber=parent.phone_number,
+                    role='Parent',
+                )
+                # Set password directly (already hashed from registration)
+                user_obj.password = parent.parent_password
+                user_obj.save()
+                Parent.objects.create(parent=user_obj)
+            
+            # Update parent registration status to approved
+            # Once approved, parent can log in (no need for re-approval by other teachers)
+            parent.status = 'approved'
+            parent.save()
+            
+            return Response({
+                'message': 'Parent registration approved successfully',
+                'parent_id': parent.parent_id
+            }, status=status.HTTP_200_OK)
+        
+        else:
+            return Response({
+                'error': 'Invalid registration type. Must be "student" or "parent". Teachers are auto-approved.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in approve_registration: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to approve registration: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def reject_registration(request):
+    """
+    Reject a student or parent registration
+    Deletes the registration record
+    """
+    try:
+        user = request.user
+        
+        # Check if user is a teacher
+        if user.role != 'Teacher':
+            return Response({
+                'error': 'Access denied. Only teacher users can reject registrations.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        registration_id = request.data.get('id')
+        registration_type = request.data.get('type')  # 'student' or 'parent' (teachers don't need approval)
+        
+        if not registration_id or not registration_type:
+            return Response({
+                'error': 'Missing required fields: id and type'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if registration_type == 'student':
+            try:
+                student = StudentRegistration.objects.get(student_id=registration_id, status='pending')
+                student_id = student.student_id
+                student.delete()  # Delete the registration
+                return Response({
+                    'message': 'Student registration rejected and deleted',
+                    'student_id': student_id
+                }, status=status.HTTP_200_OK)
+            except StudentRegistration.DoesNotExist:
+                return Response({
+                    'error': 'Student registration not found or already processed'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+        elif registration_type == 'parent':
+            try:
+                parent = ParentRegistration.objects.get(parent_id=registration_id, status='pending')
+                parent_id = parent.parent_id
+                parent.delete()  # Delete the registration
+                return Response({
+                    'message': 'Parent registration rejected and deleted',
+                    'parent_id': parent_id
+                }, status=status.HTTP_200_OK)
+            except ParentRegistration.DoesNotExist:
+                return Response({
+                    'error': 'Parent registration not found or already processed'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        else:
+            return Response({
+                'error': 'Invalid registration type. Must be "student" or "parent". Teachers are auto-approved.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in reject_registration: {str(e)}")
+        print(traceback.format_exc())
+        return Response({
+            'error': f'Failed to reject registration: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

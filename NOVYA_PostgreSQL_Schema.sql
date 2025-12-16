@@ -14,6 +14,7 @@ CREATE TABLE parent_registration (
     phone_number VARCHAR(15) UNIQUE NOT NULL,
     parent_username VARCHAR(255) UNIQUE NOT NULL,
     parent_password VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -26,6 +27,10 @@ CREATE TABLE student_registration (
     student_username VARCHAR(255) UNIQUE NOT NULL,
     student_email VARCHAR(255) UNIQUE,
     parent_email VARCHAR(255) NOT NULL,
+    student_password VARCHAR(255) NOT NULL,
+    grade VARCHAR(50),
+    school VARCHAR(150),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -38,6 +43,9 @@ CREATE TABLE teacher_registration (
     phone_number VARCHAR(15) UNIQUE NOT NULL,
     teacher_username VARCHAR(255) UNIQUE NOT NULL,
     teacher_password VARCHAR(255) NOT NULL,
+    grade VARCHAR(50),
+    school VARCHAR(150),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -905,11 +913,8 @@ CREATE TABLE studyroom_group_message_reaction (
     CONSTRAINT uq_studyroom_group_message_reaction UNIQUE (message_id, user_id, emoji)
 );
 
--- =====================================================
--- CORE MODULE
--- =====================================================
+-- ============================================\\\\\\\\\\\\\\\\]
 
--- System Settings
 CREATE TABLE system_settings (
     id SERIAL PRIMARY KEY,
     key VARCHAR(100) UNIQUE NOT NULL,

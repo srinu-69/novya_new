@@ -2082,7 +2082,65 @@
   "Excellent": "ಅತ್ಯುತ್ತಮ",
   "Good": "ಒಳ್ಳೆಯದು",
   "Average": "ಸರಾಸರಿ",
-  "Needs Improvement": "ಸುಧಾರಣೆ ಅಗತ್ಯವಿದೆ"
+  "Needs Improvement": "ಸುಧಾರಣೆ ಅಗತ್ಯವಿದೆ",
+  "onboarding": "ಆನ್‌ಬೋರ್ಡಿಂಗ್",
+  "accountOnboarding": {
+    "title": "ಖಾತೆ ಆನ್‌ಬೋರ್ಡಿಂಗ್",
+    "subtitle": "ಹೊಸ ಖಾತೆ ನೋಂದಣಿಗಳನ್ನು ಪರಿಶೀಲಿಸಿ ಮತ್ತು ನಿರ್ವಹಿಸಿ",
+    "stats": {
+      "pending": "ಬಾಕಿ",
+      "approved": "ಅನುಮೋದಿತ",
+      "rejected": "ತಿರಸ್ಕರಿಸಲಾಗಿದೆ",
+      "totalAccounts": "ಒಟ್ಟು ಖಾತೆಗಳು",
+      "students": "ವಿದ್ಯಾರ್ಥಿಗಳು",
+      "parents": "ಪೋಷಕರು"
+    },
+    "search": {
+      "placeholder": "ಹೆಸರು, ಇಮೇಲ್, ಅಥವಾ ಶಾಲೆಯಿಂದ ಹುಡುಕಿ..."
+    },
+    "filters": {
+      "type": "ಪ್ರಕಾರ",
+      "status": "ಸ್ಥಿತಿ",
+      "show": "ತೋರಿಸು",
+      "allTypes": "ಎಲ್ಲಾ ಪ್ರಕಾರಗಳು",
+      "allStatus": "ಎಲ್ಲಾ ಸ್ಥಿತಿಗಳು",
+      "student": "ವಿದ್ಯಾರ್ಥಿ",
+      "parent": "ಪೋಷಕ",
+      "pending": "ಬಾಕಿ",
+      "approved": "ಅನುಮೋದಿತ",
+      "rejected": "ತಿರಸ್ಕರಿಸಲಾಗಿದೆ"
+    },
+    "bulkActions": {
+      "selected": "ಆಯ್ದ",
+      "approve": "ಆಯ್ದವನ್ನು ಅನುಮೋದಿಸಿ",
+      "reject": "ಆಯ್ದವನ್ನು ತಿರಸ್ಕರಿಸಿ"
+    },
+    "table": {
+      "nameRole": "ಹೆಸರು ಮತ್ತು ಪಾತ್ರ",
+      "contactInfo": "ಸಂಪರ್ಕ ಮಾಹಿತಿ",
+      "school": "ಶಾಲೆ",
+      "registrationDate": "ನೋಂದಣಿ ದಿನಾಂಕ",
+      "status": "ಸ್ಥಿತಿ",
+      "actions": "ಕ್ರಿಯೆಗಳು"
+    },
+    "actions": {
+      "approve": "ಅನುಮೋದಿಸಿ",
+      "reject": "ತಿರಸ್ಕರಿಸಿ",
+      "approved": "ಅನುಮೋದಿತ",
+      "rejected": "ತಿರಸ್ಕರಿಸಲಾಗಿದೆ"
+    },
+    "messages": {
+      "noResults": "ನಿಮ್ಮ ಮಾನದಂಡಕ್ಕೆ ಹೊಂದಿಕೆಯಾಗುವ ಖಾತೆಗಳು ಕಂಡುಬಂದಿಲ್ಲ"
+    },
+    "pagination": {
+      "showing": "ತೋರಿಸಲಾಗುತ್ತಿದೆ",
+      "to": "ಗೆ",
+      "of": "ನ",
+      "accounts": "ಖಾತೆಗಳು",
+      "previous": "ಹಿಂದಿನ",
+      "next": "ಮುಂದಿನ"
+    }
+  }
  
 
 

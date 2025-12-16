@@ -19,7 +19,9 @@ function Signup() {
     phone: "",
     email: "",
     role: roleFromUrl,
-    parentEmail: "", // Added parentEmail
+    // parentEmail removed - students will add it in their profile after login
+    grade: "", // Added grade for student and teacher
+    school: "", // Added school for student and teacher
     password: "",
     confirmPassword: "",
   });
@@ -31,6 +33,7 @@ function Signup() {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -84,10 +87,15 @@ function Signup() {
       newErrors.email = "Please enter a valid email address";
     }
 
-    if (form.role === "student" && !form.parentEmail.trim()) { // Validate parentEmail for students
-      newErrors.parentEmail = "Parent's email is required for students";
-    } else if (form.role === "student" && !emailRegex.test(form.parentEmail)) {
-      newErrors.parentEmail = "Please enter a valid parent's email address";
+    // Parent email removed from student registration - will be added in student profile after login
+    
+    // Validate grade and school for student and teacher
+    if ((form.role === "student" || form.role === "teacher") && !form.grade.trim()) {
+      newErrors.grade = "Grade is required";
+    }
+    
+    if ((form.role === "student" || form.role === "teacher") && !form.school.trim()) {
+      newErrors.school = "School is required";
     }
     
     // No parentEmail validation needed for teacher or parent roles
@@ -111,70 +119,176 @@ function Signup() {
 // ✅ Handle signup submit - REAL API INTEGRATION
 const handleSubmit = async (e) => {
   e.preventDefault();
+  
+  // Prevent duplicate submissions
+  if (isSubmitting) {
+    console.log('⚠️ Already submitting, ignoring duplicate request');
+    return;
+  }
+  
+  console.log('🔍 Form submission started', { form, errors });
 
-  if (validateForm()) {
-    try {
-      // Prepare data for Django backend
-      const registrationData = {
-        username: form.userName,
-        email: form.email,
-        password: form.password,
-        confirm_password: form.confirmPassword, // Required by Django serializer
-        firstname: form.firstName,
-        lastname: form.lastName,
-        phonenumber: form.phone,
-        role: form.role.charAt(0).toUpperCase() + form.role.slice(1), // Capitalize first letter (Student/Parent)
-      };
+  if (!validateForm()) {
+    console.log('❌ Form validation failed', errors);
+    return;
+  }
+  
+  setIsSubmitting(true);
+  console.log('✅ Form validation passed, submitting...');
+  
+  try {
+    // Prepare data for Django backend
+    const registrationData = {
+      username: form.userName,
+      email: form.email,
+      password: form.password,
+      confirm_password: form.confirmPassword, // Required by Django serializer
+      firstname: form.firstName,
+      lastname: form.lastName,
+      phonenumber: form.phone,
+    };
 
-      // Add parent email for students only
-      if (form.role === "student") {
-        registrationData.parent_email = form.parentEmail;
-      }
-      // Teacher and Parent don't need parent_email
+    // Add role-specific fields
+    let apiEndpoint;
+    if (form.role === "student") {
+      // parent_email removed - student will add it in profile after login
+      registrationData.grade = form.grade;
+      registrationData.school = form.school;
+      // Map to serializer field names
+      registrationData.first_name = form.firstName;
+      registrationData.last_name = form.lastName;
+      registrationData.student_username = form.userName;
+      registrationData.student_email = form.email;
+      registrationData.phone_number = form.phone;
+      apiEndpoint = API_CONFIG.DJANGO.AUTH.REGISTER_STUDENT;
+    } else if (form.role === "parent") {
+      // Map to serializer field names
+      registrationData.first_name = form.firstName;
+      registrationData.last_name = form.lastName;
+      registrationData.parent_username = form.userName;
+      registrationData.phone_number = form.phone;
+      registrationData.parent_password = form.password;
+      apiEndpoint = API_CONFIG.DJANGO.AUTH.REGISTER_PARENT;
+    } else if (form.role === "teacher") {
+      registrationData.grade = form.grade;
+      registrationData.school = form.school;
+      // Map to serializer field names
+      registrationData.first_name = form.firstName;
+      registrationData.last_name = form.lastName;
+      registrationData.teacher_username = form.userName;
+      registrationData.phone_number = form.phone;
+      registrationData.teacher_password = form.password;
+      apiEndpoint = API_CONFIG.DJANGO.AUTH.REGISTER_TEACHER;
+    }
 
-      // Call Django backend register API (no auth needed for registration)
-      const response = await djangoAPI.postNoAuth(API_CONFIG.DJANGO.AUTH.REGISTER, registrationData);
+    // Call the appropriate registration endpoint
+    console.log('📤 Sending registration request to:', apiEndpoint);
+    console.log('📋 Registration data:', registrationData);
+    const response = await djangoAPI.postNoAuth(apiEndpoint, registrationData);
+    console.log('✅ Registration response:', response);
 
-      // Save user data to localStorage for quick access
-      const userDataToStore = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        userName: form.userName,
-        phone: form.phone,
-        email: form.email,
-        role: form.role,
-        parentEmail: form.parentEmail,
-        userId: response.user?.id || response.user?.userid
-      };
-      
-      if (form.role === "student") {
-        localStorage.setItem("studentData", JSON.stringify(userDataToStore));
-      } else if (form.role === "parent") {
-        localStorage.setItem("parentData", JSON.stringify(userDataToStore));
-      } else if (form.role === "teacher") {
-        localStorage.setItem("teacherData", JSON.stringify(userDataToStore));
-      }
+    // Save user data to localStorage for quick access
+    const userDataToStore = {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      userName: form.userName,
+      phone: form.phone,
+      email: form.email,
+      role: form.role,
+      // parentEmail removed - will be added in student profile after login
+      userId: response.user?.id || response.user?.userid
+    };
+    
+    if (form.role === "student") {
+      localStorage.setItem("studentData", JSON.stringify(userDataToStore));
+    } else if (form.role === "parent") {
+      localStorage.setItem("parentData", JSON.stringify(userDataToStore));
+    } else if (form.role === "teacher") {
+      localStorage.setItem("teacherData", JSON.stringify(userDataToStore));
+    }
 
-      // Show success message
-      toast.success("Account created successfully! Redirecting to login...");
-      
-      // Navigate to login after successful registration
+    // Show success message based on role
+    if (form.role === "teacher") {
+      toast.success("Teacher registration successful! You can log in now.");
+      // For teachers, we might have tokens in response, so we could auto-login
+      // But for now, just redirect to login
       setTimeout(() => navigate("/login"), 2000);
-      
-    } catch (error) {
-      console.error('Registration error:', error);
-      
-      // Handle specific error messages from backend
-      if (error.message.includes('username')) {
-        toast.error("Username already exists. Please choose a different username.");
-      } else if (error.message.includes('email')) {
-        toast.error("Email already registered. Please use a different email.");
-      } else if (error.message.includes('phone')) {
-        toast.error("Phone number already registered. Please use a different number.");
-      } else {
-        toast.error(error.message || "Registration failed. Please try again.");
+    } else {
+      toast.success("Registration submitted! Waiting for teacher approval. You'll be able to login once approved.");
+      // Navigate to login after successful registration
+      setTimeout(() => navigate("/login"), 3000);
+    }
+    
+  } catch (error) {
+    console.error('❌ Registration error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      response: error.response,
+      status: error.status
+    });
+    
+    // Handle error response
+    let errorMessage = "Registration failed. Please try again.";
+    let errorDetails = null;
+    
+    if (error.response && error.response.data) {
+      errorDetails = error.response.data;
+      console.error('Error details from response:', errorDetails);
+    } else if (error.message) {
+      // Try to extract error from message
+      const errorMatch = error.message.match(/\{.*\}/);
+      if (errorMatch) {
+        try {
+          errorDetails = JSON.parse(errorMatch[0]);
+        } catch (e) {
+          // Not JSON, use message as is
+        }
       }
     }
+    
+    // Handle specific error messages from backend
+    if (errorDetails) {
+      // Check for field-specific errors
+      if (errorDetails.username) {
+        errorMessage = Array.isArray(errorDetails.username) ? errorDetails.username[0] : errorDetails.username;
+      } else if (errorDetails.email) {
+        errorMessage = Array.isArray(errorDetails.email) ? errorDetails.email[0] : errorDetails.email;
+      } else if (errorDetails.phone_number || errorDetails.phone) {
+        const phoneError = errorDetails.phone_number || errorDetails.phone;
+        errorMessage = Array.isArray(phoneError) ? phoneError[0] : phoneError;
+      } else if (errorDetails.student_username) {
+        errorMessage = Array.isArray(errorDetails.student_username) ? errorDetails.student_username[0] : errorDetails.student_username;
+      } else if (errorDetails.student_email) {
+        errorMessage = Array.isArray(errorDetails.student_email) ? errorDetails.student_email[0] : errorDetails.student_email;
+      } else if (errorDetails.detail) {
+        errorMessage = errorDetails.detail;
+      } else if (errorDetails.error) {
+        errorMessage = errorDetails.error;
+      } else if (typeof errorDetails === 'object') {
+        // Show first error from validation errors
+        const firstKey = Object.keys(errorDetails)[0];
+        const firstError = errorDetails[firstKey];
+        if (Array.isArray(firstError)) {
+          errorMessage = `${firstKey}: ${firstError[0]}`;
+        } else {
+          errorMessage = `${firstKey}: ${firstError}`;
+        }
+      }
+    } else if (error.message) {
+      if (error.message.includes('username')) {
+        errorMessage = "Username already exists. Please choose a different username.";
+      } else if (error.message.includes('email')) {
+        errorMessage = "Email already registered. Please use a different email.";
+      } else if (error.message.includes('phone')) {
+        errorMessage = "Phone number already registered. Please use a different number.";
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    toast.error(errorMessage);
+  } finally {
+    setIsSubmitting(false);
   }
 };
 
@@ -200,21 +314,26 @@ const handleSubmit = async (e) => {
           pointerEvents: "none",
         }}
       >
-        {[...Array(12)].map((_, i) => (
-          <motion.circle
-            key={i}
-            cx={Math.random() * 100 + "%"}
-            cy={Math.random() * 100 + "%"}
-            r={5 + Math.random() * 12}
-            fill={i % 2 === 0 ? "#2D5D7B" : "#A62D69"}
-            animate={{ cy: ["-10%", "110%"] }}
-            transition={{
-              repeat: Infinity,
-              duration: 12 + Math.random() * 8,
-              delay: Math.random() * 5,
-            }}
-          />
-        ))}
+        {[...Array(12)].map((_, i) => {
+          const cx = Math.random() * 100;
+          const initialCy = Math.random() * 100;
+          const r = 5 + Math.random() * 12;
+          return (
+            <motion.circle
+              key={i}
+              cx={`${cx}%`}
+              cy={`${initialCy}%`}
+              r={r}
+              fill={i % 2 === 0 ? "#2D5D7B" : "#A62D69"}
+              animate={{ cy: ["-10%", "110%"] }}
+              transition={{
+                repeat: Infinity,
+                duration: 12 + Math.random() * 8,
+                delay: Math.random() * 5,
+              }}
+            />
+          );
+        })}
       </svg>
 
       {/* Back Arrow */}
@@ -449,34 +568,65 @@ const handleSubmit = async (e) => {
             <option value="teacher">Teacher</option>
           </motion.select>
 
-          {/* Parent Email for Students Only */}
-          {form.role === "student" && (
+          {/* Parent Email removed - students will add it in their profile after login */}
+
+          {/* Grade and School for Student and Teacher */}
+          {(form.role === "student" || form.role === "teacher") && (
             <>
-              <label htmlFor="parentEmail">Parent's Email</label>
-              <motion.input
-                id="parentEmail"
-                type="email"
-                name="parentEmail"
-                value={form.parentEmail}
-                onChange={handleChange}
-                placeholder="Enter Parent's Email"
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  border: errors.parentEmail
-                    ? "1px solid #ff4d4f"
-                    : "1px solid #2D5D7B",
-                  marginTop: "5px",
-                  marginBottom: errors.parentEmail ? "5px" : "15px",
-                }}
-                whileFocus={{ scale: 1.02, borderColor: "#A62D69" }}
-              />
-              {errors.parentEmail && (
-                <p style={{ color: "#ff4d4f", fontSize: "12px" }}>
-                  {errors.parentEmail}
-                </p>
-              )}
+              <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+                <div style={{ flex: 1 }}>
+                  <label htmlFor="grade">Grade</label>
+                  <motion.input
+                    id="grade"
+                    type="text"
+                    name="grade"
+                    value={form.grade}
+                    onChange={handleChange}
+                    placeholder="Enter Grade"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: errors.grade
+                        ? "1px solid #ff4d4f"
+                        : "1px solid #2D5D7B",
+                      marginTop: "5px",
+                    }}
+                    whileFocus={{ scale: 1.02, borderColor: "#A62D69" }}
+                  />
+                  {errors.grade && (
+                    <p style={{ color: "#ff4d4f", fontSize: "12px" }}>
+                      {errors.grade}
+                    </p>
+                  )}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label htmlFor="school">School</label>
+                  <motion.input
+                    id="school"
+                    type="text"
+                    name="school"
+                    value={form.school}
+                    onChange={handleChange}
+                    placeholder="Enter School Name"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: errors.school
+                        ? "1px solid #ff4d4f"
+                        : "1px solid #2D5D7B",
+                      marginTop: "5px",
+                    }}
+                    whileFocus={{ scale: 1.02, borderColor: "#A62D69" }}
+                  />
+                  {errors.school && (
+                    <p style={{ color: "#ff4d4f", fontSize: "12px" }}>
+                      {errors.school}
+                    </p>
+                  )}
+                </div>
+              </div>
             </>
           )}
 
@@ -600,20 +750,22 @@ const handleSubmit = async (e) => {
 
           <motion.button
             type="submit"
+            disabled={isSubmitting}
             style={{
               width: "100%",
               padding: "12px",
               borderRadius: "8px",
               border: "none",
-              background: "#2D5D7B",
+              background: isSubmitting ? "#ccc" : "#2D5D7B",
               color: "#fff",
               fontSize: "16px",
-              cursor: "pointer",
+              cursor: isSubmitting ? "not-allowed" : "pointer",
+              opacity: isSubmitting ? 0.6 : 1,
             }}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={isSubmitting ? {} : { scale: 1.03 }}
+            whileTap={isSubmitting ? {} : { scale: 0.97 }}
           >
-            Sign Up
+            {isSubmitting ? "Registering..." : "Sign Up"}
           </motion.button>
         </form>
       </motion.div>

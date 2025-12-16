@@ -2088,7 +2088,65 @@
   "Excellent": "उत्कृष्ट",
   "Good": "अच्छा",
   "Average": "औसत",
-  "Needs Improvement": "सुधार की आवश्यकता"
+  "Needs Improvement": "सुधार की आवश्यकता",
+  "onboarding": "ऑनबोर्डिंग",
+  "accountOnboarding": {
+    "title": "खाता ऑनबोर्डिंग",
+    "subtitle": "नए खाता पंजीकरण की समीक्षा और प्रबंधन करें",
+    "stats": {
+      "pending": "लंबित",
+      "approved": "अनुमोदित",
+      "rejected": "अस्वीकृत",
+      "totalAccounts": "कुल खाते",
+      "students": "छात्र",
+      "parents": "अभिभावक"
+    },
+    "search": {
+      "placeholder": "नाम, ईमेल, या स्कूल से खोजें..."
+    },
+    "filters": {
+      "type": "प्रकार",
+      "status": "स्थिति",
+      "show": "दिखाएं",
+      "allTypes": "सभी प्रकार",
+      "allStatus": "सभी स्थिति",
+      "student": "छात्र",
+      "parent": "अभिभावक",
+      "pending": "लंबित",
+      "approved": "अनुमोदित",
+      "rejected": "अस्वीकृत"
+    },
+    "bulkActions": {
+      "selected": "चयनित",
+      "approve": "चयनित को अनुमोदित करें",
+      "reject": "चयनित को अस्वीकृत करें"
+    },
+    "table": {
+      "nameRole": "नाम और भूमिका",
+      "contactInfo": "संपर्क जानकारी",
+      "school": "स्कूल",
+      "registrationDate": "पंजीकरण तिथि",
+      "status": "स्थिति",
+      "actions": "कार्रवाई"
+    },
+    "actions": {
+      "approve": "अनुमोदित करें",
+      "reject": "अस्वीकृत करें",
+      "approved": "अनुमोदित",
+      "rejected": "अस्वीकृत"
+    },
+    "messages": {
+      "noResults": "आपकी कसौटी से मेल खाने वाले कोई खाते नहीं मिले"
+    },
+    "pagination": {
+      "showing": "दिखा रहे हैं",
+      "to": "से",
+      "of": "का",
+      "accounts": "खाते",
+      "previous": "पिछला",
+      "next": "अगला"
+    }
+  }
 
 
 

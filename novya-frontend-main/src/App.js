@@ -767,6 +767,7 @@ import StudentDetails from './modules/teacher/Studentdetails';
 import ParentDetails from './modules/teacher/Parentdetails';
 import TeacherResults from './modules/teacher/Results';
 import StudentsReport from './modules/teacher/StudentReport';
+import OnboardingPage from './modules/teacher/Onboarding';
 
 import './modules/parent/styles.css';
 
@@ -1177,6 +1178,16 @@ function App() {
               <RoleRoute requiredRole="teacher">
                 <div style={{ marginLeft: '250px', padding: '0' }}>
                   <ParentDetails />
+                </div>
+              </RoleRoute>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/teacher/onboarding" element={
+            <ProtectedRoute>
+              <RoleRoute requiredRole="teacher">
+                <div style={{ marginLeft: '250px', padding: '0' }}>
+                  <OnboardingPage />
                 </div>
               </RoleRoute>
             </ProtectedRoute>
