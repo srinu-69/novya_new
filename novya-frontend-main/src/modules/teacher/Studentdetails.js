@@ -30,6 +30,7 @@ const StudentDetails = () => {
         const transformedStudents = response.students.map((student, index) => {
           const userInfo = student.user_info || {};
           const profile = student.profile || {};
+          const parentInfo = student.parent_info || {};
           
           // Calculate attendance (default to 95% if not available)
           const attendance = profile.attendance || '95%';
@@ -46,7 +47,13 @@ const StudentDetails = () => {
             attendance: attendance,
             lastActive: `2 ${t('hoursAgo')}`, // Default last active
             school: profile.school || '',
-            phone: userInfo.phone || student.phone_number || ''
+            phone: userInfo.phone || student.phone_number || '',
+            parentInfo: {
+              parentName: parentInfo.parent_name || 'Not provided',
+              parentEmail: parentInfo.parent_email || 'Not provided',
+              parentPhone: parentInfo.parent_phone || 'Not provided',
+              linked: parentInfo.linked || false
+            }
           };
         });
         
@@ -527,30 +534,92 @@ const StudentDetails = () => {
             </h3>
             
             {selectedStudent && (
-              <div style={studentInfoStyle}>
-                <div style={infoGridStyle}>
-                  <div style={infoItemStyle}>
-                    <span style={infoLabelStyle}>{t('email')}:</span>
-                    <span style={infoValueStyle}>{selectedStudent.email}</span>
-                  </div>
-                  <div style={infoItemStyle}>
-                    <span style={infoLabelStyle}>{t('grade')}:</span>
-                    <span style={gradeBadgeStyle(selectedStudent.grade)}>
-                      {selectedStudent.grade}
-                    </span>
-                  </div>
-                  <div style={infoItemStyle}>
-                    <span style={infoLabelStyle}>{t('attendance')}:</span>
-                    <span style={attendanceBadgeStyle(selectedStudent.attendance)}>
-                      {selectedStudent.attendance}
-                    </span>
-                  </div>
-                  <div style={infoItemStyle}>
-                    <span style={infoLabelStyle}>{t('lastActive')}:</span>
-                    <span style={infoValueStyle}>{selectedStudent.lastActive}</span>
+              <>
+                <div style={studentInfoStyle}>
+                  <div style={infoGridStyle}>
+                    <div style={infoItemStyle}>
+                      <span style={infoLabelStyle}>{t('email')}:</span>
+                      <span style={infoValueStyle}>{selectedStudent.email}</span>
+                    </div>
+                    <div style={infoItemStyle}>
+                      <span style={infoLabelStyle}>{t('grade')}:</span>
+                      <span style={gradeBadgeStyle(selectedStudent.grade)}>
+                        {selectedStudent.grade}
+                      </span>
+                    </div>
+                    <div style={infoItemStyle}>
+                      <span style={infoLabelStyle}>{t('attendance')}:</span>
+                      <span style={attendanceBadgeStyle(selectedStudent.attendance)}>
+                        {selectedStudent.attendance}
+                      </span>
+                    </div>
+                    <div style={infoItemStyle}>
+                      <span style={infoLabelStyle}>{t('lastActive')}:</span>
+                      <span style={infoValueStyle}>{selectedStudent.lastActive}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+                
+                {/* Parent/Guardian Information Section */}
+                {selectedStudent.parentInfo && (
+                  <div style={{
+                    ...studentInfoStyle,
+                    marginTop: '15px',
+                    borderTop: '2px solid #2D5D7B',
+                    paddingTop: '15px'
+                  }}>
+                    <h4 style={{
+                      color: '#2D5D7B',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      marginBottom: '12px',
+                      borderBottom: '2px solid #2D5D7B',
+                      paddingBottom: '8px'
+                    }}>
+                      {t('parentGuardianInformation') || 'Parent/Guardian Information'}
+                      {selectedStudent.parentInfo.linked && (
+                        <span style={{
+                          marginLeft: '10px',
+                          fontSize: '0.85rem',
+                          color: '#3CB371',
+                          fontWeight: '500'
+                        }}>
+                          ({t('linked') || 'Linked'})
+                        </span>
+                      )}
+                    </h4>
+                    <div style={infoGridStyle}>
+                      <div style={infoItemStyle}>
+                        <span style={infoLabelStyle}>{t('parentName') || 'Parent Name'}:</span>
+                        <span style={{
+                          ...infoValueStyle,
+                          color: selectedStudent.parentInfo.parentName === 'Not provided' ? '#999' : infoValueStyle.color
+                        }}>
+                          {selectedStudent.parentInfo.parentName}
+                        </span>
+                      </div>
+                      <div style={infoItemStyle}>
+                        <span style={infoLabelStyle}>{t('parentEmail') || 'Parent Email'}:</span>
+                        <span style={{
+                          ...infoValueStyle,
+                          color: selectedStudent.parentInfo.parentEmail === 'Not provided' ? '#999' : infoValueStyle.color
+                        }}>
+                          {selectedStudent.parentInfo.parentEmail}
+                        </span>
+                      </div>
+                      <div style={infoItemStyle}>
+                        <span style={infoLabelStyle}>{t('parentPhone') || 'Parent Phone'}:</span>
+                        <span style={{
+                          ...infoValueStyle,
+                          color: selectedStudent.parentInfo.parentPhone === 'Not provided' ? '#999' : infoValueStyle.color
+                        }}>
+                          {selectedStudent.parentInfo.parentPhone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             
             <div style={chatMessagesStyle}>

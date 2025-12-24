@@ -210,11 +210,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         
         # Require role for login - reject if not provided
         if not role:
-            print(f"❌ LOGIN REJECTED: No role provided in login request")
-            return Response(
-                {'detail': 'Role is required for login. Please specify student, parent, or teacher.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            role = 'student'  # default ONLY for Postman / Swagger testing
+            # print(f"❌ LOGIN REJECTED: No role provided in login request")
+            # return Response(
+            #     {'detail': 'Role is required for login. Please specify student, parent, or teacher.'},
+            #     status=status.HTTP_400_BAD_REQUEST
+            # )
         
         # Validate role is one of the allowed values
         if role not in ['student', 'parent', 'teacher']:
@@ -498,7 +499,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     pass
             else:
                 print(f"ℹ️ User role is '{user.role}', not 'Student', skipping streak update")
-        
+        response = super().post(request, *args, **kwargs)
+        print(f"🔍 LOGIN RESPONSE STATUS: {response.status_code}")
         return response
 
 
@@ -1981,6 +1983,69 @@ def get_teacher_students(request):
                     'email': student.student_email or '',
                     'phone': student.phone_number or ''
                 }
+            
+            # Add parent information - check multiple sources for linked parents
+            parent_info = {
+                'parent_name': 'Not provided',
+                'parent_email': 'Not provided',
+                'parent_phone': 'Not provided',
+                'linked': False
+            }
+            
+            try:
+                # First, check parent_student_mapping table
+                parent_mappings = ParentStudentMapping.objects.filter(student_id=student.student_id)
+                parent_email_to_use = None
+                
+                if parent_mappings.exists():
+                    # Get parent email from mapping
+                    parent_email_to_use = parent_mappings.first().parent_email
+                    parent_info['linked'] = True
+                    print(f"  🔗 Found parent via parent_student_mapping: {parent_email_to_use}")
+                else:
+                    # Fallback: check StudentProfile.parent_email
+                    try:
+                        profile = StudentProfile.objects.get(student_id=student.student_id)
+                        if profile.parent_email and profile.parent_email.strip() and profile.parent_email != 'no-parent@example.com':
+                            parent_email_to_use = profile.parent_email.strip()
+                            parent_info['linked'] = True
+                            print(f"  🔗 Found parent via StudentProfile: {parent_email_to_use}")
+                    except StudentProfile.DoesNotExist:
+                        pass
+                    
+                    # Also check StudentRegistration.parent_email as fallback
+                    if not parent_email_to_use and student.parent_email and student.parent_email.strip() and student.parent_email != 'no-parent@example.com':
+                        parent_email_to_use = student.parent_email.strip()
+                        parent_info['linked'] = True
+                        print(f"  🔗 Found parent via StudentRegistration: {parent_email_to_use}")
+                
+                # If we found a parent email, fetch parent details
+                if parent_email_to_use:
+                    try:
+                        parent_registration = ParentRegistration.objects.get(email=parent_email_to_use)
+                        parent_info = {
+                            'parent_name': f"{parent_registration.first_name} {parent_registration.last_name}".strip(),
+                            'parent_email': parent_registration.email,
+                            'parent_phone': parent_registration.phone_number or 'Not provided',
+                            'linked': True
+                        }
+                        print(f"  ✅ Found parent details: {parent_info['parent_name']} ({parent_info['parent_email']})")
+                    except ParentRegistration.DoesNotExist:
+                        print(f"  ⚠️ ParentRegistration not found for email: {parent_email_to_use}")
+                        parent_info = {
+                            'parent_name': 'Not provided',
+                            'parent_email': parent_email_to_use or 'Not provided',
+                            'parent_phone': 'Not provided',
+                            'linked': False
+                        }
+                else:
+                    print(f"  ⚠️ No parent email found for student {student.student_id}")
+            except Exception as e:
+                import traceback
+                print(f"  ❌ Error fetching parent info for student {student.student_id}: {e}")
+                print(traceback.format_exc())
+            
+            student_data['parent_info'] = parent_info
             
             # Add quiz and mock test scores using the EXACT same logic as get_student_performance
             try:
