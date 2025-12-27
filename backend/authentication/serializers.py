@@ -576,10 +576,25 @@ class TeacherRegistrationCreateSerializer(serializers.ModelSerializer):
         # Hash the password
         from django.contrib.auth.hashers import make_password
         validated_data['teacher_password'] = make_password(validated_data['teacher_password'])
-        # Teachers are auto-approved, but we'll set status in the view
-        # Set to 'approved' here so it's ready immediately
-        validated_data['status'] = 'approved'
-        return TeacherRegistration.objects.create(**validated_data)
+        # CRITICAL: Explicitly set status to 'pending' - requires school admin approval
+        # Remove any existing status value and force it to 'pending'
+        if 'status' in validated_data:
+            del validated_data['status']
+        validated_data['status'] = 'pending'
+        
+        # Create the teacher registration
+        teacher = TeacherRegistration.objects.create(**validated_data)
+        
+        # Double-check status was set correctly
+        if teacher.status != 'pending':
+            print(f"❌ CRITICAL ERROR: Teacher status is '{teacher.status}' but should be 'pending'!")
+            # Force it to pending
+            teacher.status = 'pending'
+            teacher.save(update_fields=['status'])
+            teacher.refresh_from_db()
+            print(f"✅ Forced status to 'pending' for teacher {teacher.teacher_username}")
+        
+        return teacher
 
 
 class StudentRegistrationCreateSerializer(serializers.ModelSerializer):

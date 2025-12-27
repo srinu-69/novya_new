@@ -16,10 +16,21 @@ Including another URLconf
 """
 # from django.contrib import admin  # Temporarily disabled
 from django.urls import path, include
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+)
 from django.conf import settings
 from django.conf.urls.static import static
 
+
 urlpatterns = [
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path(
+        'api/docs/',
+        SpectacularSwaggerView.as_view(url_name='schema'),
+        name='swagger-ui',
+    ),
     # path('admin/', admin.site.urls),  # Temporarily disabled
     path('', include('core.urls')),
     path('', include('studyroom.urls')),
@@ -30,6 +41,7 @@ urlpatterns = [
     path('api/progress/', include('progress.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/ai-assistant/', include('ai_assistant.urls')),
+   
 ]
 
 # Serve media files in development

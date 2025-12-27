@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.db.models import Q, Avg, Count
 from django.utils import timezone
+from authentication.models import Student
 
 from .models import (
     Subject, Course, Chapter, Lesson, CourseEnrollment,
@@ -142,9 +143,10 @@ class CourseEnrollmentView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def perform_create(self, serializer):
+        student = Student.objects.get(student=self.request.user)
         course_id = self.kwargs['pk']
         serializer.save(
-            student=self.request.user,
+            student=student,
             course_id=course_id,
             enrolled_at=timezone.now()
         )
@@ -157,8 +159,9 @@ def get_course_progress(request, pk):
     Get course progress for a student
     """
     try:
+        student = Student.objects.get(student=request.user)
         enrollment = CourseEnrollment.objects.get(
-            student=request.user,
+            student=student,
             course_id=pk,
             is_active=True
         )
@@ -170,7 +173,7 @@ def get_course_progress(request, pk):
         )
         
         lesson_progress = LessonProgress.objects.filter(
-            student=request.user,
+            student=student,
             lesson__in=lessons
         )
         
@@ -201,9 +204,10 @@ def update_lesson_progress(request, pk):
     Update lesson progress
     """
     try:
+        student = Student.objects.get(student=request.user)
         lesson = Lesson.objects.get(pk=pk)
         progress, created = LessonProgress.objects.get_or_create(
-            student=request.user,
+            student=student,
             lesson=lesson
         )
         
@@ -240,10 +244,16 @@ class StudentCourseListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
+        student = Student.objects.get(student=self.request.user)
         enrollments = CourseEnrollment.objects.filter(
-            student=self.request.user,
+            student=student,
             is_active=True
         )
+        print(f"🔍 ENROLLMENTS: {enrollments}")
+        # enrollments = CourseEnrollment.objects.filter(
+        #     student=self.request.user,
+        #     is_active=True
+        # )
         
         course_data = []
         for enrollment in enrollments:
@@ -253,7 +263,7 @@ class StudentCourseListView(generics.ListAPIView):
                 is_published=True
             )
             lesson_progress = LessonProgress.objects.filter(
-                student=self.request.user,
+                student=student,
                 lesson__in=lessons
             )
             
@@ -281,10 +291,17 @@ def get_student_progress(request):
     """
     Get overall student progress
     """
-    user = request.user
+    student = Student.objects.get(student=request.user)
+
+    enrollments = CourseEnrollment.objects.filter(
+        student=student,
+        is_active=True
+    )
+
+    # user = request.user
     
-    # Get all enrollments
-    enrollments = CourseEnrollment.objects.filter(student=user, is_active=True)
+    # # Get all enrollments
+    # enrollments = CourseEnrollment.objects.filter(student=user, is_active=True)
     
     # Calculate overall progress
     total_courses = enrollments.count()
@@ -296,7 +313,7 @@ def get_student_progress(request):
             is_published=True
         )
         lesson_progress = LessonProgress.objects.filter(
-            student=user,
+            student=student,
             lesson__in=lessons
         )
         

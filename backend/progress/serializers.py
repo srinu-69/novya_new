@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.fields import empty
 from .models import (
     Attendance, Assignment, AssignmentSubmission, Grade, StudyPlan,
     StudyPlanItem, StudentProgress, Achievement
@@ -19,7 +20,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.SerializerMethodField()
     student_id = serializers.IntegerField(write_only=True)
     course_id = serializers.IntegerField(write_only=True, required=False)
-    teacher_id = serializers.IntegerField(write_only=True, required=False)
+    teacher_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     # Support subject_id for backward compatibility - will map to course_id
     subject_id = serializers.IntegerField(write_only=True, required=False)
     
@@ -168,10 +169,27 @@ class AttendanceSerializer(serializers.ModelSerializer):
         # Make absolutely sure course_id is not in validated_data (use course object instead)
         validated_data.pop('course_id', None)
         
-        # Handle teacher_id - get from request user if not provided
-        if 'teacher_id' not in validated_data or not validated_data.get('teacher_id'):
+        # Handle teacher_id - get from request user if not provided or if teacher_id is 0 or None
+        teacher_id_value = validated_data.pop('teacher_id', None)
+        
+        # Normalize teacher_id_value - ONLY accept valid positive integers
+        # Convert empty class, None, 0, or any non-int to None
+        # CRITICAL: empty is a class and is truthy, so check type FIRST
+        if teacher_id_value is None:
+            teacher_id_value = None
+        elif not isinstance(teacher_id_value, int):
+            # This catches the empty class and any other non-int types
+            teacher_id_value = None
+        elif teacher_id_value == 0 or teacher_id_value < 0:
+            # Invalid teacher_id values
+            teacher_id_value = None
+        
+        # Get request object for use in both branches
+        request = self.context.get('request')
+        
+        # Treat teacher_id_value as missing if None or 0
+        if not teacher_id_value or teacher_id_value == 0:
             # Try to get teacher_id from request user
-            request = self.context.get('request')
             if request and request.user:
                 try:
                     # Get teacher registration for the current user
@@ -181,6 +199,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
                             email=request.user.email
                         )
                         validated_data['teacher'] = teacher_reg
+                        print(f'✅ Found teacher from email: {teacher_reg.teacher_id} - {teacher_reg.teacher_username}')
                     except TeacherRegistration.DoesNotExist:
                         # Try by username
                         try:
@@ -188,21 +207,58 @@ class AttendanceSerializer(serializers.ModelSerializer):
                                 teacher_username=request.user.username
                             )
                             validated_data['teacher'] = teacher_reg
+                            print(f'✅ Found teacher from username: {teacher_reg.teacher_id} - {teacher_reg.teacher_username}')
                         except TeacherRegistration.DoesNotExist:
                             # If user is not a teacher, set to None (optional field)
+                            print(f'⚠️ User {request.user.username} is not a teacher, setting teacher to None')
                             validated_data['teacher'] = None
                 except Exception as e:
-                    print(f'Error getting teacher registration: {e}')
+                    print(f'❌ Error getting teacher registration: {e}')
                     validated_data['teacher'] = None
-        elif 'teacher_id' in validated_data:
-            # If teacher_id is provided, get the TeacherRegistration object
-            try:
-                teacher_reg = TeacherRegistration.objects.get(
-                    teacher_id=validated_data.pop('teacher_id')
-                )
-                validated_data['teacher'] = teacher_reg
-            except TeacherRegistration.DoesNotExist:
+            else:
                 validated_data['teacher'] = None
+        else:
+            # If teacher_id is provided and not 0, get the TeacherRegistration object
+            # CRITICAL: Double-check that teacher_id_value is a valid positive integer
+            # This prevents the empty class from reaching the database query
+            if (not isinstance(teacher_id_value, int) or 
+                teacher_id_value <= 0 or 
+                teacher_id_value is empty or
+                str(type(teacher_id_value)) == "<class 'rest_framework.fields.empty'>"):
+                # Invalid teacher_id, fall back to request user
+                teacher_id_value = None
+                if request and request.user:
+                    try:
+                        teacher_reg = TeacherRegistration.objects.get(
+                            teacher_username=request.user.username
+                        )
+                        validated_data['teacher'] = teacher_reg
+                        print(f'✅ Found teacher from request user (invalid teacher_id fallback): {teacher_reg.teacher_id}')
+                    except TeacherRegistration.DoesNotExist:
+                        validated_data['teacher'] = None
+                else:
+                    validated_data['teacher'] = None
+            else:
+                try:
+                    teacher_reg = TeacherRegistration.objects.get(
+                        teacher_id=teacher_id_value
+                    )
+                    validated_data['teacher'] = teacher_reg
+                    print(f'✅ Using provided teacher_id: {teacher_reg.teacher_id} - {teacher_reg.teacher_username}')
+                except TeacherRegistration.DoesNotExist:
+                    print(f'⚠️ Teacher with ID {teacher_id_value} not found, trying to get from request user')
+                    # Fallback to request user
+                if request and request.user:
+                    try:
+                        teacher_reg = TeacherRegistration.objects.get(
+                            teacher_username=request.user.username
+                        )
+                        validated_data['teacher'] = teacher_reg
+                        print(f'✅ Found teacher from request user (fallback): {teacher_reg.teacher_id}')
+                    except TeacherRegistration.DoesNotExist:
+                        validated_data['teacher'] = None
+                else:
+                    validated_data['teacher'] = None
         
         # Calculate hours_attended if check_in_time and check_out_time are provided
         if validated_data.get('check_in_time') and validated_data.get('check_out_time'):
@@ -212,6 +268,22 @@ class AttendanceSerializer(serializers.ModelSerializer):
             if check_out > check_in:
                 hours = (check_out - check_in).total_seconds() / 3600
                 validated_data['hours_attended'] = round(hours, 2)
+        
+        # Make absolutely sure teacher_id is not in validated_data (use teacher object instead)
+        # Remove it multiple times to be safe, and do it right before create
+        # This is critical - teacher_id must not be in validated_data when calling super().create()
+        while 'teacher_id' in validated_data:
+            del validated_data['teacher_id']
+        validated_data.pop('teacher_id', None)  # Safe pop as backup
+        
+        # Also remove subject_id if it's still there (we already converted it to course_id)
+        validated_data.pop('subject_id', None)
+        
+        # Debug: Print what we're about to pass to super().create()
+        print(f'🔍 Final validated_data keys before create: {list(validated_data.keys())}')
+        if 'teacher_id' in validated_data:
+            print(f'❌ ERROR: teacher_id is still in validated_data! Value: {validated_data["teacher_id"]}')
+            del validated_data['teacher_id']  # Force remove one more time
         
         return super().create(validated_data)
     
@@ -254,14 +326,18 @@ class AttendanceSerializer(serializers.ModelSerializer):
         # Update teacher if provided
         if 'teacher_id' in validated_data:
             teacher_id = validated_data.pop('teacher_id')
-            if teacher_id:
+            # Treat teacher_id=0 or None as missing, get from request user
+            if teacher_id and teacher_id != 0:
                 try:
                     teacher_reg = TeacherRegistration.objects.get(teacher_id=teacher_id)
                     validated_data['teacher'] = teacher_reg
+                    print(f'✅ Using provided teacher_id in update: {teacher_reg.teacher_id}')
                 except TeacherRegistration.DoesNotExist:
                     validated_data['teacher'] = None
-            else:
-                # If teacher_id is None/empty, try to get from request user
+                    print(f'⚠️ Teacher with ID {teacher_id} not found in update')
+            
+            # If teacher_id is None/0/empty or teacher not found, try to get from request user
+            if not validated_data.get('teacher'):
                 request = self.context.get('request')
                 if request and request.user:
                     try:
@@ -269,14 +345,20 @@ class AttendanceSerializer(serializers.ModelSerializer):
                             email=request.user.email
                         )
                         validated_data['teacher'] = teacher_reg
+                        print(f'✅ Found teacher from email in update: {teacher_reg.teacher_id}')
                     except TeacherRegistration.DoesNotExist:
                         try:
                             teacher_reg = TeacherRegistration.objects.get(
                                 teacher_username=request.user.username
                             )
                             validated_data['teacher'] = teacher_reg
+                            print(f'✅ Found teacher from username in update: {teacher_reg.teacher_id}')
                         except TeacherRegistration.DoesNotExist:
                             validated_data['teacher'] = None
+                            print(f'⚠️ User {request.user.username} is not a teacher in update')
+        
+        # Make absolutely sure teacher_id is not in validated_data
+        validated_data.pop('teacher_id', None)
         
         # Calculate hours_attended if check_in_time and check_out_time are provided
         if validated_data.get('check_in_time') and validated_data.get('check_out_time'):

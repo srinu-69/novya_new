@@ -872,7 +872,7 @@ CREATE TABLE studyroom_group_membership (
     CONSTRAINT uq_studyroom_group_membership UNIQUE (group_id, user_id)
 );
 
--- Group Messages
+-- Group Messages  
 CREATE TABLE studyroom_group_message (
     id SERIAL PRIMARY KEY,
     group_id INTEGER NOT NULL,

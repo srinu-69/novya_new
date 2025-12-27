@@ -471,7 +471,8 @@ export default function StudentsReport() {
         // Get student basic info (same format as Results page)
         const firstName = student.user_info?.firstname || student.first_name || '';
         const lastName = student.user_info?.lastname || student.last_name || '';
-        const className = student.profile?.grade || 'Class 7';
+        // Use profile.grade directly from student profile (what was entered in student portal)
+        const className = student.profile?.grade || scoreData?.className || 'Class 7';
         
         console.log(`📊 Processing student ${studentId} (${firstName} ${lastName}):`, {
           hasScoreData: !!scoreData,
@@ -479,7 +480,9 @@ export default function StudentsReport() {
           subjectsCount: Object.keys(scoreData.subjects || {}).length,
           score: scoreData.score,
           scoreDataKeys: Object.keys(scoreData),
-          subjectsData: scoreData.subjects
+          subjectsData: scoreData.subjects,
+          profileGrade: student.profile?.grade,
+          className: className
         });
         
         // Get subjects from school test scores
@@ -806,7 +809,7 @@ export default function StudentsReport() {
                 student_id: savedStudentId,
                 name: updatedStudentData.name,
                 roll: updatedStudentData.roll || `T${String(savedStudentId).padStart(3, '0')}`,
-                className: updatedStudentData.className || updatedStudentData.class_name || 'Class 7',
+                className: updatedStudentData.className || updatedStudentData.class_name || selectedStudent.className || 'Class 7',
                 score: updatedStudentData.score || 0,
                 change: updatedStudentData.change || 0,
                 subjects: subjects

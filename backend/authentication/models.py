@@ -80,6 +80,8 @@ class TeacherRegistration(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('blocked', 'Blocked'),
     ]
     
     teacher_id = models.AutoField(primary_key=True)

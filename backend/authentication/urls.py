@@ -94,4 +94,7 @@ urlpatterns = [
     # Alternative without trailing slash (for compatibility)
     path('onboarding/approve', views.approve_registration, name='approve_registration_no_slash'),
     path('onboarding/reject', views.reject_registration, name='reject_registration_no_slash'),
+    
+    # Sync endpoint
+    path('sync-parent-email/', views.sync_parent_email_to_registration, name='sync_parent_email_to_registration'),
 ]
