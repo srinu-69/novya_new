@@ -280,6 +280,53 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 # Check if registration is approved
                 if parent_reg.status != 'approved':
                     validation_error = "Your registration is pending approval. Please wait for your teacher to approve your account before logging in."
+                else:
+                    # Parent is approved - ensure User account exists before authentication
+                    # This handles cases where parent was approved but User account wasn't created
+                    user_exists = User.objects.filter(username=username).exists()
+                    user_exists_by_email = User.objects.filter(email=parent_reg.email).exists()
+                    
+                    if not user_exists and not user_exists_by_email:
+                        print(f"⚠️ Parent {username} is approved but User account doesn't exist. Creating User account...")
+                        try:
+                            user_obj = User.objects.create(
+                                username=parent_reg.parent_username,
+                                email=parent_reg.email,
+                                firstname=parent_reg.first_name,
+                                lastname=parent_reg.last_name,
+                                phonenumber=parent_reg.phone_number,
+                                role='Parent',
+                            )
+                            # Set password directly (already hashed from registration)
+                            user_obj.password = parent_reg.parent_password
+                            user_obj.save()
+                            # Create Parent object if it doesn't exist
+                            if not Parent.objects.filter(parent=user_obj).exists():
+                                Parent.objects.create(parent=user_obj)
+                            print(f"✅ Created User account for parent {username}")
+                        except Exception as e:
+                            print(f"❌ Error creating User account for parent {username}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            validation_error = "Error setting up your account. Please contact support."
+                    elif user_exists_by_email and not user_exists:
+                        # User exists by email but not by username - update username to match
+                        print(f"⚠️ User account exists for email {parent_reg.email} but username mismatch. Updating username...")
+                        try:
+                            user_obj = User.objects.get(email=parent_reg.email)
+                            if user_obj.role == 'Parent':
+                                # Update username and password to match parent registration
+                                user_obj.username = parent_reg.parent_username
+                                user_obj.password = parent_reg.parent_password
+                                user_obj.save()
+                                print(f"✅ Updated User account username for parent {username}")
+                            else:
+                                validation_error = "Email is already registered with a different role."
+                        except Exception as e:
+                            print(f"❌ Error updating User account for parent {username}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            validation_error = "Error setting up your account. Please contact support."
             except ParentRegistration.DoesNotExist:
                 parent_found = False
                 in_student = StudentRegistration.objects.filter(student_username=username).exists()
